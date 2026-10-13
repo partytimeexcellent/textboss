@@ -31,7 +31,7 @@ cp .env.example .env    # set PUBLIC_URL, BULKVS_*, WEBHOOK_SECRET
 docker compose up -d --build
 ```
 
-This runs the app on port 3000. Put your reverse proxy in front of it and set `PUBLIC_URL` to the public `https://` address.
+This runs the app on the `PORT` from `.env` (default 3000). Put your reverse proxy in front of it and set `PUBLIC_URL` to the public `https://` address.
 
 With no reverse proxy, run `docker compose --profile caddy up -d --build` instead. That also starts Caddy, which gets a Let's Encrypt certificate for `DOMAIN`. It needs a DNS record pointing at the server and ports 80/443 open.
 

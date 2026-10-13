@@ -2,7 +2,8 @@
 #
 # Behind an existing reverse proxy (Pangolin, Traefik, nginx...):
 #   docker compose up -d
-#   then point the proxy at port 3000 on this host. No ports 80/443 needed here.
+#   then point the proxy at this host on the PORT set in .env (default 3000).
+#   No ports 80/443 needed here.
 #
 # Standalone with Caddy for automatic HTTPS (needs a DNS record for DOMAIN
 # pointing here and ports 80/443 open):
@@ -15,11 +16,11 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /app/data
-      PORT: "3000"
+      PORT: "3000" # inside the container; the host port comes from PORT in .env
     volumes:
       - textboss-data:/app/data
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
 
   caddy:
     image: caddy:2.8-alpine
