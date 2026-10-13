@@ -1,7 +1,7 @@
 // TextBoss web client. No build step: plain ES modules and DOM APIs.
 
 import {
-  h, fill, icon, state, els, route, api, setUnauthorizedHandler, loadIndex, loadCanned, loadLists,
+  h, fill, icon, autoFocus, state, els, route, api, setUnauthorizedHandler, loadIndex, loadCanned, loadLists,
   toast, formatPhone, fullName, nameFor, conversationName, numberLabel, numberOptions, conversationAvatar,
   relTime, store, dialog, confirmDialog, confirmOptOutDialog, openMenu, backButton, buildComposer,
 } from './js/core.js';
@@ -87,7 +87,7 @@ async function renderAuth() {
     h('button', { class: 'btn primary', type: 'submit' }, setup.needed ? 'Create account' : 'Sign in'),
   );
   fill(app, h('div', { class: 'auth' }, form));
-  form.querySelector('input').focus();
+  autoFocus(form.querySelector('input'));
 }
 
 // ---------- Shell ----------
@@ -526,7 +526,7 @@ function renderNewMessage() {
     h('div', { class: 'placeholder' }, ''),
     composer,
   );
-  input.focus();
+  autoFocus(input);
 }
 
 // ----- Thread -----
@@ -573,7 +573,7 @@ async function openThread(id) {
   renderThreadChrome();
   renderMessages(true);
   markRead(t.id);
-  els.main.querySelector('textarea').focus({ preventScroll: true });
+  autoFocus(els.main.querySelector('textarea'));
 }
 
 function renderThreadChrome() {
@@ -583,17 +583,24 @@ function renderThreadChrome() {
   const single = others.length === 1 ? others[0] : null;
   const optedOut = others.filter((p) => state.optedOut.has(p));
   const blocked = single && state.blocked.has(single);
+  // Phone (when a contact name is shown) and, with several numbers, which one this is on
+  const subline = [
+    single && state.names[single] && formatPhone(single),
+    state.numbers.length > 1 && `via ${numberLabel(t.numberId)}`,
+  ].filter(Boolean).join(' · ');
 
-  fill(els.threadHead, 
+  fill(els.threadHead,
     backButton(),
     conversationAvatar(others),
     h('div', { class: 'title' },
-      h('div', { class: 'name' }, conversationName(others),
+      h('div', { class: 'name' },
+        h('span', { class: 'name-text' }, conversationName(others)),
+        // Phones hide the header pin/flag buttons; these show the state instead
+        t.pinned && h('span', { class: 'state-mark pin', title: 'Pinned' }, icon('pin')),
+        t.flagged && h('span', { class: 'state-mark flag', title: 'Flagged' }, icon('flag')),
         optedOut.length > 0 && h('span', { class: 'tag warn' }, 'Opted out'),
         blocked && h('span', { class: 'tag' }, 'Blocked')),
-      h('div', { class: 'sub' },
-        single && state.names[single] ? `${formatPhone(single)} · ` : '',
-        `via ${numberLabel(t.numberId)}`)),
+      subline && h('div', { class: 'sub' }, subline)),
     quickToggle(t, 'pinned', 'head'),
     quickToggle(t, 'flagged', 'head'),
     single && h('button', {
@@ -691,6 +698,8 @@ function renderMessages(forceBottom = false) {
 
     const media = m.media.map((url, i) => {
       const ext = url.split('?')[0].split('.').pop().toLowerCase();
+      // MMS often carries a SMIL layout file alongside the picture; it has nothing to show
+      if (['smil', 'smi', 'xml'].includes(ext)) return null;
       let view;
       if (['mp4', '3gp', 'mov'].includes(ext)) view = h('video', { src: url, controls: true, preload: 'metadata' });
       else if (['mp3', 'm4a', 'amr', 'wav'].includes(ext)) view = h('audio', { src: url, controls: true });
@@ -709,7 +718,7 @@ function renderMessages(forceBottom = false) {
     nodes.push(
       h('div', { class: `msg ${m.direction}${gap ? ' gap' : ''}${m.status === 'failed' ? ' failed' : ''}${m.kind === 'auto' ? ' auto' : ''}`, title: new Date(m.createdAt).toLocaleString() },
         group && m.direction === 'in' && (!prev || prev.from !== m.from || prev.direction !== 'in') && h('div', { class: 'sender' }, nameFor(m.from)),
-        media.length > 0 && h('div', { class: 'media' }, media),
+        media.some(Boolean) && h('div', { class: 'media' }, media),
         m.body && h('div', { class: 'bubble' }, linkify(m.body)),
         showInfo && h('div', { class: 'info' },
           m.sentBy ? `${m.sentBy} · ` : '',

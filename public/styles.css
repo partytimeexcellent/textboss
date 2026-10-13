@@ -179,8 +179,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   border-bottom: 1px solid var(--border); min-height: 61px;
 }
 .thread-head .title { flex: 1; min-width: 0; }
-.thread-head .title .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.thread-head .title .sub { color: var(--text-muted); font-size: 13px; }
+.thread-head .title .name { font-weight: 700; display: flex; align-items: center; min-width: 0; white-space: nowrap; }
+.thread-head .title .name-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.thread-head .title .name .tag { flex: none; }
+.state-mark { display: none; flex: none; margin-left: 6px; }
+.state-mark svg { width: 14px; height: 14px; fill: currentColor; }
+.state-mark.pin { color: var(--link); }
+.state-mark.flag { color: var(--highlight); }
+.thread-head .title .sub { color: var(--text-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .back-btn { display: none; }
 
 .messages { flex: 1; overflow-y: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 2px; }
@@ -597,6 +603,14 @@ details > summary { cursor: pointer; }
   .back-btn { display: inline-grid; }
   .msg { max-width: 85%; }
   .form-grid, .form-grid.three, .color-row { grid-template-columns: 1fr; }
+  /* Compact conversation header: name gets the room */
+  .thread-head { gap: 6px; padding: 8px 6px 8px 4px; min-height: 56px; }
+  .thread-head .avatar { width: 34px; height: 34px; font-size: 13px; }
+  .thread-head .title .name { font-size: 16px; }
+  .thread-head .quick.head { display: none; }
+  .state-mark { display: inline-grid; }
+  /* 16px text stops iPhone Safari from zooming in when a field is tapped */
+  input, select, textarea { font-size: 16px !important; }
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-page { padding: 14px 12px; }
   .card-head, .card-body { padding-left: 16px; padding-right: 16px; }
@@ -612,3 +626,4 @@ a.btn.primary { color: var(--accent-text); }
 .btn svg { width: 16px; height: 16px; }
 .table tr.inactive td:not(:first-child) { opacity: .5; }
 .table td input.switch { min-width: 0; width: 40px; }
+@media (pointer: coarse) { input, select, textarea { font-size: 16px; } }

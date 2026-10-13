@@ -72,6 +72,13 @@ export function openEmojiPicker(anchor, onPick) {
   picker.style.top = `${Math.max(8, r.top - picker.offsetHeight - 6)}px`;
   setTimeout(() => document.addEventListener('mousedown', outside));
 }
+// On phones, focusing a field pops the keyboard (and used to make iOS zoom in),
+// so only move focus automatically on devices with a mouse
+export const isTouch = () => matchMedia('(pointer: coarse)').matches;
+export function autoFocus(el) {
+  if (el && !isTouch()) el.focus({ preventScroll: true });
+}
+
 // replaceChildren, skipping null/false like h() does
 export function fill(el, ...children) {
   el.replaceChildren(...children.flat(Infinity).filter((c) => c != null && c !== false));
@@ -402,7 +409,7 @@ export function openCannedPicker(anchor, onPick) {
   const r = anchor.getBoundingClientRect();
   picker.style.left = `${Math.max(8, Math.min(r.left, innerWidth - picker.offsetWidth - 8))}px`;
   picker.style.top = `${Math.max(8, r.top - picker.offsetHeight - 6)}px`;
-  search.focus();
+  autoFocus(search);
   setTimeout(() => document.addEventListener('mousedown', outside));
 }
 

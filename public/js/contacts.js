@@ -1,7 +1,7 @@
 // Contacts tab: contact list with multi-select, contact form, lists and bulk messages
 
 import {
-  h, fill, icon, state, els, route, api, loadLists, toast, formatPhone, fullName, formatDob, numberLabel,
+  h, fill, icon, autoFocus, state, els, route, api, loadLists, toast, formatPhone, fullName, formatDob, numberLabel,
   numberOptions, avatar, initials, relTime, dialog, confirmDialog, paneHead, buildComposer, mergeFields,
 } from './core.js';
 
@@ -388,7 +388,7 @@ async function renderContact(id, query) {
     paneHead(id ? fullName(c) : 'New contact', id && avatar(`c${id}`, initials(fullName(c)))),
     h('div', { class: 'admin' }, form),
   );
-  form.querySelector('input').focus({ preventScroll: true });
+  autoFocus(form.querySelector('input'));
 }
 
 async function messageContact(c) {
@@ -485,7 +485,7 @@ async function renderBulk() {
     ),
     composer,
   );
-  composer.textarea.focus();
+  autoFocus(composer.textarea);
 }
 
 // ----- Bulk message progress -----
