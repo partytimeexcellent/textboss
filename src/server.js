@@ -9,6 +9,7 @@ import {
   getOrCreateConversation,
   userNumberIds,
   userCanAccessNumber,
+  allUserIds,
 } from './db.js';
 import {
   loadUser,
@@ -22,7 +23,12 @@ import {
 import { subscribe, publish } from './events.js';
 import { normalizePhone, isValidPhone, participantsKey } from './phone.js';
 import { parseWebhook } from './bulkvs.js';
-import { recordInbound, sendOutbound, applyReceipt, listMessages } from './messaging.js';
+import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcasts } from './messaging.js';
+import { fail } from './http.js';
+import { parseContactFile, upsertContacts, logImport } from './contacts.js';
+import { router as contactsRouter } from './routes/contacts.js';
+import { router as importApi, createApiKey } from './routes/importApi.js';
+import { startWatcher } from './watcher.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mediaDir = path.join(config.dataDir, 'media');
@@ -31,16 +37,6 @@ fs.mkdirSync(mediaDir, { recursive: true });
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 'loopback');
-
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-const fail = (status, message) => {
-  throw new HttpError(status, message);
-};
 
 // ---------- Inbound webhook (no session; protected by the secret path) ----------
 
@@ -83,6 +79,10 @@ app.use(
   '/media',
   express.static(mediaDir, { fallthrough: false, maxAge: '365d', immutable: true }),
 );
+
+// ---------- Contact import API (API key, no session) ----------
+
+app.use('/api/v1', importApi);
 
 // ---------- App ----------
 
@@ -188,10 +188,12 @@ api.get('/conversations', (req, res) => {
     const digits = q.replace(/\D/g, '');
     where += ` AND (
       EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id AND m2.body LIKE ?)
-      OR EXISTS (SELECT 1 FROM contacts ct WHERE ct.name LIKE ? AND (',' || c.participants || ',') LIKE ('%,' || ct.phone || ',%'))
+      OR EXISTS (SELECT 1 FROM contacts ct
+                 WHERE (ct.first_name || ' ' || ct.last_name LIKE ? OR ct.last_name || ' ' || ct.first_name LIKE ? OR ct.patient_id = ?)
+                   AND ct.phone != '' AND (',' || c.participants || ',') LIKE ('%,' || ct.phone || ',%'))
       ${digits.length >= 3 ? 'OR c.participants LIKE ?' : ''}
     )`;
-    params.push(`%${q}%`, `%${q}%`);
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, q);
     if (digits.length >= 3) params.push(`%${digits}%`);
   }
 
@@ -266,8 +268,36 @@ api.post('/conversations/:id/messages', async (req, res) => {
   if (media.some((url) => !url.startsWith(`${config.publicUrl}/media/`))) fail(400, 'Attachments must be uploaded first');
 
   const number = db.prepare('SELECT * FROM numbers WHERE id = ?').get(conversation.number_id);
-  const message = await sendOutbound({ conversation, number, user: req.user, body, media });
+  const message = await sendOutbound({
+    conversation,
+    number,
+    user: req.user,
+    body,
+    media,
+    confirmOptOut: req.body?.confirmOptOut === true,
+  });
   res.json(message);
+});
+
+// Marks the conversation unread for this user, from the latest inbound message on
+api.post('/conversations/:id/unread', (req, res) => {
+  const c = loadConversation(req);
+  const last = db.prepare(`SELECT MAX(id) AS id FROM messages WHERE conversation_id = ? AND direction = 'in'`).get(c.id);
+  if (last.id) {
+    db.prepare(
+      `INSERT INTO reads (user_id, conversation_id, last_read_id) VALUES (?, ?, ?)
+       ON CONFLICT (user_id, conversation_id) DO UPDATE SET last_read_id = excluded.last_read_id`,
+    ).run(req.user.id, c.id, last.id - 1);
+  }
+  publish([req.user.id], 'read', { conversationId: c.id });
+  res.json({ ok: true });
+});
+
+api.delete('/conversations/:id', (req, res) => {
+  const c = loadConversation(req);
+  db.prepare('DELETE FROM conversations WHERE id = ?').run(c.id);
+  publish(allUserIds(), 'read', { conversationId: c.id });
+  res.json({ ok: true });
 });
 
 api.post('/conversations/:id/read', (req, res) => {
@@ -312,26 +342,9 @@ api.post('/upload', express.raw({ type: () => true, limit: '5mb' }), (req, res) 
   res.json({ url: `${config.publicUrl}/media/${name}`, type });
 });
 
-// ----- Contacts (shared by all users) -----
+// ----- Contacts, lists, canned responses, bulk messages -----
 
-api.get('/contacts', (_req, res) => {
-  res.json(db.prepare('SELECT phone, name FROM contacts ORDER BY name COLLATE NOCASE').all());
-});
-
-api.put('/contacts/:phone', (req, res) => {
-  const phone = normalizePhone(req.params.phone);
-  const name = String(req.body?.name ?? '').trim();
-  if (!isValidPhone(phone)) fail(400, 'Not a valid phone number');
-  if (!name) {
-    db.prepare('DELETE FROM contacts WHERE phone = ?').run(phone);
-  } else {
-    db.prepare(
-      'INSERT INTO contacts (phone, name) VALUES (?, ?) ON CONFLICT (phone) DO UPDATE SET name = excluded.name',
-    ).run(phone, name);
-  }
-  publish(db.prepare('SELECT id FROM users').all().map((u) => u.id), 'contacts', {});
-  res.json({ ok: true });
-});
+api.use(contactsRouter);
 
 // ----- Admin -----
 
@@ -435,12 +448,64 @@ admin.get('/webhook-log', (_req, res) => {
   });
 });
 
+// ----- Contact import (upload), API keys, blocked numbers -----
+
+admin.post('/import', express.raw({ type: () => true, limit: '20mb' }), (req, res) => {
+  if (!req.body?.length) fail(400, 'Empty file');
+  const filename = String(req.headers['x-filename'] ?? 'upload').slice(0, 200);
+  const dryRun = req.query.dryRun === '1';
+  let parsed;
+  try {
+    parsed = parseContactFile(req.body);
+  } catch (err) {
+    fail(400, `Could not read ${filename}: ${err.message}`);
+  }
+  const result = upsertContacts(parsed.records, { dryRun });
+  if (!dryRun) {
+    logImport('upload', filename, result);
+    publish(allUserIds(), 'contacts', {});
+  }
+  res.json({ dryRun, columns: parsed.columns, rows: parsed.records.length, ...result });
+});
+
+admin.get('/imports', (_req, res) => {
+  res.json({
+    folder: config.importDir,
+    entries: db.prepare('SELECT * FROM import_log ORDER BY id DESC LIMIT 30').all(),
+  });
+});
+
+admin.get('/api-keys', (_req, res) => {
+  res.json(db.prepare('SELECT id, name, prefix, created_at AS createdAt, last_used_at AS lastUsedAt FROM api_keys ORDER BY id').all());
+});
+
+admin.post('/api-keys', (req, res) => {
+  const name = String(req.body?.name ?? '').trim();
+  if (!name) fail(400, 'Give the key a name, e.g. the software that will use it');
+  res.json({ key: createApiKey(name) });
+});
+
+admin.delete('/api-keys/:id', (req, res) => {
+  db.prepare('DELETE FROM api_keys WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+admin.get('/blocked', (_req, res) => {
+  res.json(
+    db.prepare(
+      `SELECT b.phone, b.created_at AS createdAt, u.display_name AS blockedBy
+       FROM blocked b LEFT JOIN users u ON u.id = b.blocked_by ORDER BY b.created_at DESC`,
+    ).all(),
+  );
+});
+
 // Lets an admin push a fake inbound message through the real webhook parser
 admin.post('/simulate-inbound', (req, res) => {
   const event = parseWebhook(req.body);
   if (!event || event.kind !== 'message') fail(400, 'Payload did not parse as an inbound message');
   const result = recordInbound(event);
   if (!result.ok) fail(400, result.reason);
+  if (result.blocked) fail(400, 'That sender is blocked, so the message was dropped');
   res.json(result);
 });
 
@@ -451,8 +516,15 @@ api.use((_req, _res) => fail(404, 'Not found'));
 app.use((err, _req, res, _next) => {
   const status = err.status || err.statusCode || 500;
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status >= 500 ? 'Server error' : err.message });
+  res.status(status).json({
+    error: status >= 500 ? 'Server error' : err.message,
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.phones ? { phones: err.phones } : {}),
+  });
 });
+
+resumeBroadcasts();
+startWatcher();
 
 app.listen(config.port, () => {
   console.log(`TextBoss listening on http://localhost:${config.port}`);

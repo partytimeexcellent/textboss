@@ -2,12 +2,14 @@
 
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
-- Conversation list with a number switcher, search, unread counts and archive
-- 1:1 and group threads, MMS attachments, delivery status, and who on the team sent each message
-- Live updates across all signed-in users (server-sent events) and browser notifications
-- Shared contact names
-- Admin page for numbers, users and access, plus webhook setup and a log of recent webhook calls
-- Installable on a phone as a web app (PWA)
+- **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts and archive. 1:1 and group threads, MMS attachments, delivery status, and who on the team sent each message. Per-conversation menu: mark unread, archive, opt out/in, block sender, delete history.
+- **Contacts:** first/last name, mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
+- **Opt-out:** applies to the phone number. Texting an opted-out number brings up a warning you must confirm by typing SEND, and the server enforces it. Replies of STOP, UNSUBSCRIBE, etc. opt out automatically, and START opts back in.
+- **Blocked senders:** their texts are dropped. Manage them in Admin settings.
+- **Lists and bulk messages:** tick contacts (or "select all" on a search or list), save them as a named list, and send everyone an individual text with `{first_name}`-style merge fields. Sends run in the background at one per second, skipping opted-out and blocked numbers, with a live progress page.
+- **Canned responses:** insert from the composer. Optional keyword auto-reply (an exact one-word match) and an away message (auto-reply at most once per conversation every 12 hours).
+- **Contact import:** upload .xls/.xlsx/.csv in Admin settings with a preview, push contacts from other software with an API key, or drop exports into a watched folder. WebPT's "Patient Listing" report is recognized as-is.
+- Live updates across all signed-in users (server-sent events), browser notifications, and installable on a phone (PWA).
 
 Stack: Node 22.13+ with the built-in `node:sqlite`, Express 5, and plain JavaScript in the browser, with no build step.
 
@@ -28,6 +30,7 @@ For local runs, add `INSECURE_COOKIES=1` to `.env`, because sign-in cookies are 
 ```bash
 git clone https://github.com/partytimeexcellent/textboss.git && cd textboss
 cp .env.example .env    # set PUBLIC_URL, BULKVS_*, WEBHOOK_SECRET
+mkdir -p import && sudo chown 1000:1000 import   # watched folder for contact imports
 docker compose up -d --build
 ```
 
@@ -68,23 +71,50 @@ Other options:
 
 Outbound A2P messaging to US carriers also needs a 10DLC brand and campaign registered in BulkVS for each number. Without it, carriers will filter or reject messages.
 
+## Importing contacts
+
+All three import paths use the same rules:
+- **Header row:** found automatically, even below report title rows. It must have a name column and a phone column.
+- **Phone:** the cell phone is used, then a generic phone, then home, then work.
+- **Matching:** existing contacts are matched by patient ID, or by phone plus name when there's no ID, and updated rather than duplicated.
+- **Never destructive:** imports never delete contacts or clear fields the file doesn't include, such as notes.
+
+Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Patient ID` / `Patient ID` / `MRN`, `Notes`, `Opt Out`.
+
+- **Upload:** Admin settings → Import contacts. It shows a preview, with new, updated and skipped counts, before saving.
+- **Watched folder:** files saved into `import/` (Docker) or `data/import/` (local) are imported within a minute, then moved to `processed/` or `failed/`. Results appear under Admin settings → Recent imports. The export software can save straight into this folder, or into a network share mounted there.
+- **API:** create a key under Admin settings → Contact import API, then:
+
+  ```bash
+  curl -X POST https://YOUR-DOMAIN/api/v1/contacts \
+    -H "Authorization: Bearer tbk_..." -H "Content-Type: application/json" \
+    -d '{"contacts":[{"firstName":"Jane","lastName":"Doe","phone":"5415550100","dob":"1980-01-31","patientId":"12345"}]}'
+  ```
+
+  You can also send a spreadsheet export as the body, with `Content-Type: application/vnd.ms-excel` (or `text/csv`, or the .xlsx type). Add `?dryRun=1` to preview.
+
+  If Pangolin auth is on, add `/api/v1/*` as a bypass rule for software outside your network. The API key still protects it.
+
 ## Things to verify on first real use
 
-The BulkVS docs you provided confirm the send request (`POST /messageSend` with `From`, `To[]`, `Message`, `MediaURLs[]`) and the response (`RefId`, `Results[]`). Authentication uses HTTP Basic with the REST API username and password, consistent with Textable's BulkVS setup guide. The docs do **not** describe the webhook payload, so the code makes a reasonable guess that you can check:
-
-- **Inbound and delivery-receipt payloads.** The parser accepts the same field names as `messageSend` (`From`, `To`, `Message`, `MediaURLs`, `RefId`, `DeliveryReceipt`) in any letter case, and URL-decodes text that looks encoded. Every raw webhook body is stored and shown under Admin settings → Recent webhook calls. If a real message shows "not applied", the exact payload is there, and `parseWebhook()` in [src/bulkvs.js](src/bulkvs.js) is the only place to adjust.
+Sending and receiving texts are confirmed working with BulkVS. Delivery receipts aren't confirmed yet: the parser looks for `RefId` and `DeliveryReceipt` fields. Every raw webhook body is stored and shown under Admin settings → Recent webhook calls. If receipts show as "not applied" there, `parseWebhook()` in [src/bulkvs.js](src/bulkvs.js) is the only place to adjust.
 
 ## Layout
 
 ```
-src/server.js     HTTP routes: auth, conversations, uploads, contacts, admin, webhook
-src/messaging.js  Recording inbound messages, sending outbound, applying delivery receipts
-src/bulkvs.js     All BulkVS-specific code (send + webhook parsing)
-src/db.js         SQLite schema and access helpers
-src/auth.js       Password hashing (scrypt) and cookie sessions
-src/events.js     Server-sent events hub
-public/           The web app (index.html, app.js, styles.css)
-data/             SQLite database and uploaded media (created at runtime)
+src/server.js            HTTP routes: auth, conversations, uploads, admin, webhook
+src/routes/contacts.js   Contacts, lists, canned responses, bulk messages, opt-out/block
+src/routes/importApi.js  API-key contact import (/api/v1/contacts)
+src/messaging.js         Inbound (STOP/START, blocking, auto-replies), outbound, receipts, bulk queue
+src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
+src/watcher.js           Watched import folder
+src/bulkvs.js            All BulkVS-specific code (send + webhook parsing)
+src/db.js                SQLite schema, migrations and access helpers
+src/auth.js              Password hashing (scrypt) and cookie sessions
+src/events.js            Server-sent events hub
+public/app.js            Web app shell, inbox and threads
+public/js/               Contacts, canned responses, admin, shared helpers
+data/                    SQLite database and uploaded media (created at runtime)
 ```
 
 Back up `data/` to keep your message history.

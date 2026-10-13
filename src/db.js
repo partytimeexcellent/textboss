@@ -41,12 +41,6 @@ db.exec(`
     PRIMARY KEY (user_id, number_id)
   );
 
-  -- Shared address book
-  CREATE TABLE IF NOT EXISTS contacts (
-    phone TEXT PRIMARY KEY,
-    name  TEXT NOT NULL
-  );
-
   -- A conversation is one of our numbers plus the set of other participants
   -- (one phone for a 1:1 thread, several for a group MMS).
   CREATE TABLE IF NOT EXISTS conversations (
@@ -90,6 +84,131 @@ db.exec(`
     result      TEXT
   );
 `);
+
+// v1 had a phone -> name address book. Convert it to full contacts.
+const contactCols = db.prepare('PRAGMA table_info(contacts)').all().map((c) => c.name);
+if (contactCols.includes('name') && !contactCols.includes('first_name')) {
+  db.exec('ALTER TABLE contacts RENAME TO contacts_v1');
+}
+
+db.exec(`
+  -- Several contacts can share a phone (e.g. a parent and children)
+  CREATE TABLE IF NOT EXISTS contacts (
+    id         INTEGER PRIMARY KEY,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name  TEXT NOT NULL DEFAULT '',
+    phone      TEXT NOT NULL DEFAULT '',
+    dob        TEXT NOT NULL DEFAULT '',
+    email      TEXT NOT NULL DEFAULT '',
+    patient_id TEXT NOT NULL DEFAULT '',
+    notes      TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS contacts_phone ON contacts(phone);
+  CREATE INDEX IF NOT EXISTS contacts_patient ON contacts(patient_id);
+  CREATE INDEX IF NOT EXISTS contacts_name ON contacts(last_name COLLATE NOCASE, first_name COLLATE NOCASE);
+
+  -- Opt-out is per phone number: STOP from a phone covers every contact on it
+  CREATE TABLE IF NOT EXISTS opt_outs (
+    phone      TEXT PRIMARY KEY,
+    source     TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  -- Inbound texts from these numbers are dropped
+  CREATE TABLE IF NOT EXISTS blocked (
+    phone      TEXT PRIMARY KEY,
+    blocked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS lists (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS list_members (
+    list_id    INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    PRIMARY KEY (list_id, contact_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS canned_responses (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    media      TEXT NOT NULL DEFAULT '[]',
+    keyword    TEXT NOT NULL DEFAULT '',
+    is_away    INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+
+  -- Bulk sends: one row per run, one item per recipient phone
+  CREATE TABLE IF NOT EXISTS broadcasts (
+    id         INTEGER PRIMARY KEY,
+    number_id  INTEGER NOT NULL REFERENCES numbers(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL,
+    media      TEXT NOT NULL DEFAULT '[]',
+    status     TEXT NOT NULL DEFAULT 'running',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS broadcast_items (
+    id           INTEGER PRIMARY KEY,
+    broadcast_id INTEGER NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
+    phone        TEXT NOT NULL,
+    body         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    error        TEXT
+  );
+
+  -- Keys for the contact import API (only a hash is stored)
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id           INTEGER PRIMARY KEY,
+    name         TEXT NOT NULL,
+    prefix       TEXT NOT NULL,
+    key_hash     TEXT NOT NULL UNIQUE,
+    created_at   INTEGER NOT NULL,
+    last_used_at INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS import_log (
+    id         INTEGER PRIMARY KEY,
+    source     TEXT NOT NULL,
+    filename   TEXT,
+    created    INTEGER NOT NULL DEFAULT 0,
+    updated    INTEGER NOT NULL DEFAULT 0,
+    skipped    INTEGER NOT NULL DEFAULT 0,
+    error      TEXT,
+    created_at INTEGER NOT NULL
+  );
+
+  -- Last automatic away reply per conversation, to avoid repeating it
+  CREATE TABLE IF NOT EXISTS away_sent (
+    conversation_id INTEGER PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    sent_at         INTEGER NOT NULL
+  );
+`);
+
+// v1 messages had no kind; 'auto' = keyword/away/STOP reply, 'bulk' = broadcast
+if (!db.prepare('PRAGMA table_info(messages)').all().some((c) => c.name === 'kind')) {
+  db.exec('ALTER TABLE messages ADD COLUMN kind TEXT');
+}
+
+if (contactCols.includes('name') && !contactCols.includes('first_name')) {
+  const now = Date.now();
+  const ins = db.prepare(
+    'INSERT INTO contacts (first_name, last_name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+  );
+  for (const { phone, name } of db.prepare('SELECT phone, name FROM contacts_v1').all()) {
+    const [first, ...rest] = name.trim().split(/\s+/);
+    ins.run(first ?? '', rest.join(' '), phone, now, now);
+  }
+  db.exec('DROP TABLE contacts_v1');
+}
 
 export function tx(fn) {
   db.exec('BEGIN');
@@ -138,6 +257,18 @@ export function userIdsForNumber(numberId) {
     .map((r) => r.id);
 }
 
+export function allUserIds() {
+  return db.prepare('SELECT id FROM users').all().map((u) => u.id);
+}
+
+export function isOptedOut(phone) {
+  return !!db.prepare('SELECT 1 FROM opt_outs WHERE phone = ?').get(phone);
+}
+
+export function isBlocked(phone) {
+  return !!db.prepare('SELECT 1 FROM blocked WHERE phone = ?').get(phone);
+}
+
 export function serializeMessage(row) {
   return {
     id: row.id,
@@ -148,7 +279,8 @@ export function serializeMessage(row) {
     media: JSON.parse(row.media),
     status: row.status,
     error: row.error,
-    sentBy: row.sent_by_name ?? null,
+    sentBy: row.kind === 'auto' ? 'Auto-reply' : row.sent_by_name ?? null,
+    kind: row.kind ?? null,
     createdAt: row.created_at,
   };
 }

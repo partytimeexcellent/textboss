@@ -11,7 +11,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
 COPY public ./public
 
-RUN mkdir -p /app/data && chown node:node /app/data
+RUN mkdir -p /app/data /app/import && chown node:node /app/data /app/import
 USER node
 
 EXPOSE 3000

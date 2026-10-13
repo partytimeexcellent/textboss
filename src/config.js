@@ -6,6 +6,7 @@ export const config = {
   port: Number(env.PORT || 3000),
   publicUrl: (env.PUBLIC_URL || `http://localhost:${env.PORT || 3000}`).replace(/\/+$/, ''),
   dataDir: path.resolve(env.DATA_DIR || './data'),
+  importDir: path.resolve(env.IMPORT_DIR || path.join(env.DATA_DIR || './data', 'import')),
   bulkvs: {
     username: env.BULKVS_USERNAME || '',
     password: env.BULKVS_PASSWORD || env.BULKVS_TOKEN || '',
