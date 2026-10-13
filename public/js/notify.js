@@ -6,6 +6,7 @@ import { h, fill, state, api, toast, dialog } from './core.js';
 
 const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isMacBrowserTab = () => navigator.platform === 'MacIntel' && navigator.maxTouchPoints === 0 && !isStandalone();
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 let registration = null;
@@ -135,6 +136,9 @@ export async function notificationsDialog() {
           : Notification.permission === 'denied' ? h('span', { class: 'pill warn' }, 'Blocked in device settings')
           : h('span', { class: 'pill' }, 'Off for this device')),
       h('p', { class: 'dialog-text' }, 'Get an alert and a badge on the app icon when a text arrives, even when TextBoss is closed. Each phone or computer is set up separately.'),
+      // In a Mac browser tab, alerts show the browser's icon and the web address
+      isMacBrowserTab() && h('p', { class: 'hint' },
+        'Tip: for alerts that show the TextBoss name and icon instead of the browser and web address, install it as an app. In Safari choose File → Add to Dock (in Chrome: ⋮ → Cast, save and share → Install page as app), then turn notifications on from the installed app and off here.'),
       h('label', { class: 'switch-label' }, preview,
         h('span', {}, 'Show message text', h('span', { class: 'hint' }, ' — otherwise alerts just say "New message", so patient names and messages never appear on a locked screen.'))),
       h('div', { class: 'card-actions' },
