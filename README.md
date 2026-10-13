@@ -44,6 +44,18 @@ With no reverse proxy, run `docker compose --profile caddy up -d --build` instea
 
 Data (database and uploaded media) lives in the `textboss-data` volume. To update, pull the new code and run the same `up` command again.
 
+### Locked out?
+
+Run these on the server:
+
+```bash
+docker compose exec app node src/cli.js list-users
+docker compose exec app node src/cli.js reset-password <username>
+docker compose exec app node src/cli.js make-admin <username>
+```
+
+`reset-password` prints a temporary password and signs that user out everywhere. Pass a password as a third argument to set it directly. Without Docker, run the same commands with `node src/cli.js ...` from the project folder.
+
 ### Backup, restore and moving servers
 
 **Admin settings → Backup → Download backup** gives you one `.tar.gz` file with everything: messages, contacts, users, settings and attachments. It's taken while the app keeps running. **Restore from a backup** on another TextBoss server replaces its data with the file. The app restarts to finish (Docker does this automatically), and the data it replaced is kept in `pre-restore-<date>/` inside the data volume.
@@ -128,6 +140,7 @@ src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
 src/backup.js            Backup download, restore staging and swap-in at startup
 src/push.js              Web Push (VAPID keys, subscriptions, sending, badge counts)
+src/cli.js               Account recovery: list users, reset a password, make an admin
 public/sw.js             Service worker: shows push notifications, sets the app badge
 src/bulkvs.js            All BulkVS-specific code (send, connection test, webhook parsing)
 src/provider.js          BulkVS credentials (admin settings, then .env)
