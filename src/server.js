@@ -211,7 +211,9 @@ api.post('/me/icon', express.json({ limit: '3mb' }), (req, res) => {
     if (!buf || buf.length > 1024 * 1024 || buf.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') fail(400, `Missing or invalid ${size}px icon`);
     pngs[size] = buf;
   }
-  const iconId = crypto.createHash('sha256').update(pngs[512]).digest('hex').slice(0, 16);
+  const hash = crypto.createHash('sha256');
+  for (const buf of Object.values(pngs)) hash.update(buf);
+  const iconId = hash.digest('hex').slice(0, 16);
   fs.mkdirSync(iconDir, { recursive: true });
   for (const [size, buf] of Object.entries(pngs)) fs.writeFileSync(path.join(iconDir, `${iconId}-${size}.png`), buf);
   res.json({ iconId });

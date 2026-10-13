@@ -78,8 +78,9 @@ export async function renderPngs(logo) {
     180: await draw(l, 180),
     192: await draw(l, 192),
     512: await draw(l, 512),
-    // Android crops "maskable" icons to circles and other shapes; keep the bubble inside the safe zone
-    maskable: await draw({ ...l, scale: Math.min(l.scale, 0.82) }, 512),
+    // Android crops "maskable" icons to circles; macOS (Add to Dock) also picks this one and adds its
+    // own rounded frame. 100% keeps the bubble inside the crop while still filling the Mac icon.
+    maskable: await draw({ ...l, scale: Math.min(l.scale, 1) }, 512),
   };
 }
 
