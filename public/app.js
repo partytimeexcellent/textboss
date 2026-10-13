@@ -8,7 +8,8 @@ import {
 import { renderContactsSidebar, renderContactsMain, refreshContacts, onBroadcastEvent } from './js/contacts.js';
 import { renderCanned } from './js/canned.js';
 import { renderAdmin } from './js/admin.js';
-import { applyTheme, themePicker } from './js/theme.js';
+import { applyTheme, themePicker, currentLogo } from './js/theme.js';
+import { logoSvg } from './js/logo.js';
 import { initPush, notificationsDialog, updateBadge } from './js/notify.js';
 
 const app = document.getElementById('app');
@@ -82,7 +83,7 @@ async function renderAuth() {
         }
       },
     },
-    h('h1', {}, h('img', { src: '/icon.svg', alt: '' }), 'TextBoss'),
+    h('h1', {}, h('span', { class: 'logo', 'data-logo': '34', html: logoSvg(currentLogo(), { size: 34 }) }), 'TextBoss'),
     h('p', {}, setup.needed ? 'Create the first admin account.' : 'Sign in to your team inbox.'),
     fields,
     error,
@@ -108,7 +109,7 @@ function renderShell() {
       'aside',
       { class: 'sidebar' },
       h('div', { class: 'side-top' },
-        h('img', { class: 'logo', src: '/icon.svg', alt: '' }),
+        h('span', { class: 'logo', 'data-logo': '28', html: logoSvg(currentLogo(), { size: 28 }) }),
         h('div', { class: 'brand' }, h('span', { class: 'brand-1' }, 'Text'), h('span', { class: 'brand-2' }, 'Boss')),
         h('button', { class: 'new-btn', title: 'New message (N)', onclick: () => (location.hash = '#/new') }, icon('newchat'), h('span', {}, 'New')),
         h('button', { class: 'icon-btn', title: 'Menu', onclick: (e) => openUserMenu(e.currentTarget) }, icon('menu'))),

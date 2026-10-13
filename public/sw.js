@@ -17,7 +17,7 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       tag: data.tag,
       renotify: !!data.tag,
-      icon: '/icon-192.png',
+      icon: data.icon || '/icon-192.png',
       badge: '/badge-96.png', // monochrome, for the Android status bar
       data: { url: data.url || '/' },
     }),

@@ -1,8 +1,9 @@
-// Appearance: preset or custom brand colors, plus light/dark/auto mode.
-// Saved per user on the server, cached in localStorage so the page paints in
-// the right colors before /api/me answers.
+// Appearance: preset or custom brand colors, light/dark/auto mode, and the
+// app icon design. Saved per user on the server, cached in localStorage so the
+// page paints in the right colors before /api/me answers.
 
 import { h, api, toast, dialog, store } from './core.js';
+import { LOGO_PRESETS, DEFAULT_LOGO, normalizeLogo, logoSvg, renderPngs, applyLogo } from './logo.js';
 
 export const PRESETS = [
   { id: 'textboss', name: 'TextBoss', accent: '#12b4d6', highlight: '#ff4b2b' },
@@ -14,7 +15,10 @@ export const PRESETS = [
   { id: 'slate', name: 'Slate', accent: '#475569', highlight: '#0ea5e9' },
   { id: 'rose', name: 'Rose', accent: '#d6336c', highlight: '#7048e8' },
 ];
-export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto' };
+export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO };
+
+let current = DEFAULT_THEME;
+export const currentLogo = () => normalizeLogo(current.logo);
 
 // Black or white text, whichever contrasts more with the color (WCAG luminance)
 function textOn(hex) {
@@ -28,6 +32,8 @@ function textOn(hex) {
 
 export function applyTheme(theme) {
   const t = { ...DEFAULT_THEME, ...(theme ?? {}) };
+  t.logo = normalizeLogo(t.logo);
+  current = t;
   const root = document.documentElement;
   root.style.setProperty('--brand', t.accent);
   root.style.setProperty('--brand-text', textOn(t.accent));
@@ -36,6 +42,7 @@ export function applyTheme(theme) {
   if (t.mode === 'auto') delete root.dataset.mode;
   else root.dataset.mode = t.mode;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.accent);
+  applyLogo(t.logo, t.iconId);
   store('tb.theme', JSON.stringify(t));
   return t;
 }
@@ -47,8 +54,72 @@ try {
   applyTheme(null);
 }
 
-export function themePicker(current, onSaved = () => {}) {
-  const original = { ...DEFAULT_THEME, ...(current ?? {}) };
+const ANGLES = [['up', 'Diagonal ↗'], ['diag', 'Diagonal ↘'], ['down', 'Top to bottom'], ['solid', 'Solid color']];
+
+// The app icon part of the Appearance dialog
+function logoDesigner(getLogo, setLogo) {
+  const presets = h('div', { class: 'logo-presets' });
+  const big = h('div', { class: 'logo-preview-big' });
+  const small = h('div', { class: 'logo-preview-small' });
+  const color = (title) => h('input', { type: 'color', title });
+  const bg1 = color('Background color 1');
+  const bg2 = color('Background color 2');
+  const bg3 = color('Background color 3');
+  const threeColors = h('input', { type: 'checkbox' });
+  const angle = h('select', {}, ANGLES.map(([v, label]) => h('option', { value: v }, label)));
+  const c1 = color('Bubble color');
+  const c2 = color('Second bubble color');
+  const scale = h('input', { type: 'range', min: 60, max: 130, step: 1 });
+  const scaleOut = h('span', { class: 'hint' });
+
+  const draw = () => {
+    const l = getLogo();
+    presets.replaceChildren(...LOGO_PRESETS.map((p) =>
+      h('button', { type: 'button', class: `logo-preset${l.preset === p.id ? ' on' : ''}`, title: p.name, onclick: () => setLogo({ ...p, preset: p.id }) },
+        h('span', { html: logoSvg(p, { size: 52 }) }), h('span', { class: 'swatch-name' }, p.name))));
+    big.innerHTML = logoSvg(l, { size: 96 });
+    small.innerHTML = logoSvg(l, { size: 40 }) + logoSvg(l, { size: 20 });
+    bg1.value = l.bg[0];
+    bg2.value = l.bg[1];
+    bg3.value = l.bg[2] ?? '#ff7aa8';
+    threeColors.checked = !!l.bg[2];
+    bg3.disabled = !l.bg[2] || l.angle === 'solid';
+    bg2.disabled = l.angle === 'solid';
+    angle.value = l.angle;
+    c1.value = l.c1;
+    c2.value = l.c2;
+    scale.value = Math.round(l.scale * 100);
+    scaleOut.textContent = `${Math.round(l.scale * 100)}%`;
+  };
+  const custom = (patch) => setLogo({ ...getLogo(), ...patch, preset: 'custom' });
+  bg1.addEventListener('input', () => custom({ bg: [bg1.value, getLogo().bg[1], getLogo().bg[2]] }));
+  bg2.addEventListener('input', () => custom({ bg: [getLogo().bg[0], bg2.value, getLogo().bg[2]] }));
+  bg3.addEventListener('input', () => custom({ bg: [getLogo().bg[0], getLogo().bg[1], bg3.value] }));
+  threeColors.addEventListener('change', () => custom({ bg: [getLogo().bg[0], getLogo().bg[1], threeColors.checked ? bg3.value : null] }));
+  angle.addEventListener('change', () => custom({ angle: angle.value }));
+  c1.addEventListener('input', () => custom({ c1: c1.value }));
+  c2.addEventListener('input', () => custom({ c2: c2.value }));
+  scale.addEventListener('input', () => custom({ scale: Number(scale.value) / 100 }));
+
+  const el = h('div', { class: 'logo-designer' },
+    presets,
+    h('div', { class: 'logo-custom' },
+      h('div', { class: 'logo-previews' }, big, small),
+      h('div', { class: 'logo-controls' },
+        h('div', { class: 'logo-row' }, h('span', { class: 'logo-row-label' }, 'Background'), bg1, bg2,
+          h('label', { class: 'check small' }, threeColors, bg3)),
+        h('div', { class: 'logo-row' }, h('span', { class: 'logo-row-label' }, 'Direction'), angle),
+        h('div', { class: 'logo-row' }, h('span', { class: 'logo-row-label' }, 'Bubble'), c1, c2),
+        h('div', { class: 'logo-row' }, h('span', { class: 'logo-row-label' }, 'Size'), scale, scaleOut))),
+    h('p', { class: 'hint' }, 'Used for your browser tab, the sidebar and notifications right away. Your home-screen icon changes the next time you add TextBoss to the Home Screen (remove it and add it again) — iPhone, Android and Mac all keep the icon from when the app was added.'));
+  el.redraw = draw;
+  draw();
+  return el;
+}
+
+export function themePicker(currentTheme, onSaved = () => {}) {
+  const original = { ...DEFAULT_THEME, ...(currentTheme ?? {}) };
+  original.logo = normalizeLogo(original.logo);
   let t = { ...original };
   let saved = false;
 
@@ -56,9 +127,11 @@ export function themePicker(current, onSaved = () => {}) {
   const highlight = h('input', { type: 'color', value: t.highlight });
   const swatches = h('div', { class: 'swatches' });
   const modes = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Mode' });
+  let designer;
 
   const update = (patch) => {
     t = { ...t, ...patch };
+    t.logo = normalizeLogo(t.logo);
     applyTheme(t); // live preview
     accent.value = t.accent;
     highlight.value = t.highlight;
@@ -75,9 +148,11 @@ export function themePicker(current, onSaved = () => {}) {
         h('span', { class: 'swatch-name' }, p.name))));
     modes.replaceChildren(...[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, label]) =>
       h('button', { type: 'button', role: 'radio', 'aria-checked': String(t.mode === v), class: t.mode === v ? 'on' : '', onclick: () => update({ mode: v }) }, label)));
+    designer?.redraw();
   };
   accent.addEventListener('input', () => update({ preset: 'custom', accent: accent.value }));
   highlight.addEventListener('input', () => update({ preset: 'custom', highlight: highlight.value }));
+  designer = logoDesigner(() => t.logo, (logo) => update({ logo }));
   update({});
 
   const preview = h('div', { class: 'theme-preview' },
@@ -99,11 +174,18 @@ export function themePicker(current, onSaved = () => {}) {
         h('label', { class: 'color-field' }, accent, h('span', {}, h('strong', {}, 'Accent'), h('span', { class: 'hint' }, 'Buttons, links, your messages'))),
         h('label', { class: 'color-field' }, highlight, h('span', {}, h('strong', {}, 'Highlight'), h('span', { class: 'hint' }, 'Unread counts, flags')))),
       h('div', { class: 'field-label' }, 'Preview'), preview,
+      h('div', { class: 'field-label' }, 'App icon'), designer,
       h('p', { class: 'hint' }, 'Saved to your account, so it follows you to other devices. Other users keep their own choice.'),
     ],
     'Save',
     async () => {
-      await api('/me/theme', { method: 'PUT', body: t });
+      // A new icon design needs PNG copies on the server for the home screen
+      if (JSON.stringify(t.logo) !== JSON.stringify(original.logo) || !t.iconId) {
+        const pngs = await renderPngs(t.logo);
+        t.iconId = (await api('/me/icon', { method: 'POST', body: pngs })).iconId;
+      }
+      t = await api('/me/theme', { method: 'PUT', body: t });
+      applyTheme(t);
       onSaved(t);
       saved = true;
       toast('Appearance saved');

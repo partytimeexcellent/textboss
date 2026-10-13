@@ -14,6 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const DB_FILE = 'textboss.db';
 const MEDIA_NAME = /^[0-9a-f]{32}\.[a-z0-9]{2,4}$/;
+const ICON_NAME = /^[0-9a-f]{16}-(180|192|512|maskable)\.png$/;
 
 // ---------- tar (ustar) ----------
 
@@ -75,12 +76,15 @@ export function backupStream(db, dataDir, meta) {
 
   const mediaDir = path.join(dataDir, 'media');
   const media = fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir).filter((n) => MEDIA_NAME.test(n)) : [];
+  const iconDir = path.join(dataDir, 'icons');
+  const icons = fs.existsSync(iconDir) ? fs.readdirSync(iconDir).filter((n) => ICON_NAME.test(n)) : [];
   const manifest = { app: 'textboss', format: 1, createdAt: new Date().toISOString(), mediaFiles: media.length, ...meta };
 
   const entries = [
     { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2)) },
     { name: DB_FILE, file: tmp },
     ...media.map((n) => ({ name: `media/${n}`, file: path.join(mediaDir, n), mtime: fs.statSync(path.join(mediaDir, n)).mtimeMs })),
+    ...icons.map((n) => ({ name: `icons/${n}`, file: path.join(iconDir, n) })),
   ];
   const stream = Readable.from(tarEntries(entries)).pipe(zlib.createGzip());
   const cleanup = () => fs.rm(tmp, { force: true }, () => {});
@@ -111,6 +115,7 @@ export function stageRestore(upload, dataDir) {
   const pending = path.join(dataDir, 'restore-pending');
   fs.rmSync(pending, { recursive: true, force: true });
   fs.mkdirSync(path.join(pending, 'media'), { recursive: true });
+  fs.mkdirSync(path.join(pending, 'icons'), { recursive: true });
   fs.writeFileSync(path.join(pending, DB_FILE), files.get(DB_FILE));
 
   // Make sure the database inside actually opens and looks like ours
@@ -139,6 +144,8 @@ export function stageRestore(upload, dataDir) {
       fs.writeFileSync(path.join(pending, 'media', m[1]), data);
       mediaCount++;
     }
+    const icon = /^icons\/(.+)$/.exec(name);
+    if (icon && ICON_NAME.test(icon[1])) fs.writeFileSync(path.join(pending, 'icons', icon[1]), data);
   }
   manifest.mediaRestored = mediaCount;
   fs.writeFileSync(path.join(pending, 'manifest.json'), JSON.stringify(manifest, null, 2));
@@ -153,12 +160,13 @@ export function applyPendingRestore(dataDir) {
 
   const keep = path.join(dataDir, `pre-restore-${new Date().toISOString().replace(/[:.]/g, '-')}`);
   fs.mkdirSync(keep, { recursive: true });
-  for (const name of [DB_FILE, `${DB_FILE}-wal`, `${DB_FILE}-shm`, 'media']) {
+  for (const name of [DB_FILE, `${DB_FILE}-wal`, `${DB_FILE}-shm`, 'media', 'icons']) {
     const from = path.join(dataDir, name);
     if (fs.existsSync(from)) fs.renameSync(from, path.join(keep, name));
   }
   fs.renameSync(path.join(pending, DB_FILE), path.join(dataDir, DB_FILE));
   fs.renameSync(path.join(pending, 'media'), path.join(dataDir, 'media'));
+  if (fs.existsSync(path.join(pending, 'icons'))) fs.renameSync(path.join(pending, 'icons'), path.join(dataDir, 'icons'));
   fs.rmSync(pending, { recursive: true, force: true });
   console.log(`Restored backup. The previous data was moved to ${keep}`);
 }

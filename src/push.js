@@ -58,12 +58,16 @@ export async function pushToUsers(userIds, build, { onlyEndpoint } = {}) {
   if (!userIds.length) return;
   const { publicKey, privateKey, subject } = vapid();
   const subs = db
-    .prepare(`SELECT s.*, u.is_admin FROM push_subscriptions s JOIN users u ON u.id = s.user_id WHERE s.user_id IN (${userIds.map(() => '?').join(',')})`)
+    .prepare(`SELECT s.*, u.is_admin, u.theme FROM push_subscriptions s JOIN users u ON u.id = s.user_id WHERE s.user_id IN (${userIds.map(() => '?').join(',')})`)
     .all(...userIds)
     .filter((s) => !onlyEndpoint || s.endpoint === onlyEndpoint);
   await Promise.all(subs.map(async (s) => {
     const user = { id: s.user_id, is_admin: !!s.is_admin };
-    const payload = { ...build(user, !!s.preview), badge: unreadTotal(user) };
+    let iconId = null;
+    try {
+      iconId = JSON.parse(s.theme ?? 'null')?.iconId ?? null;
+    } catch {}
+    const payload = { ...build(user, !!s.preview), badge: unreadTotal(user), icon: iconId ? `/icons/${iconId}-192.png` : undefined };
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: JSON.parse(s.keys) },

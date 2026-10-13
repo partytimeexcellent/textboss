@@ -38,6 +38,7 @@ import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatu
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mediaDir = path.join(config.dataDir, 'media');
+const iconDir = path.join(config.dataDir, 'icons');
 fs.mkdirSync(mediaDir, { recursive: true });
 
 const app = express();
@@ -95,6 +96,21 @@ app.use('/api/v1', importApi);
 app.use(express.json({ limit: '1mb' }));
 app.use(loadUser);
 // no-cache = revalidate each load, so browsers pick up new app code after a deploy
+// Per-user app manifest, so an installed app gets that user's custom icon
+app.get('/manifest.webmanifest', (req, res) => {
+  const base = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.webmanifest'), 'utf8'));
+  const iconId = req.user && JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id)?.theme ?? 'null')?.iconId;
+  if (iconId && fs.existsSync(path.join(iconDir, `${iconId}-maskable.png`))) {
+    base.icons = [
+      { src: `/icons/${iconId}-192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: `/icons/${iconId}-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: `/icons/${iconId}-maskable.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ];
+  }
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('application/manifest+json').send(JSON.stringify(base));
+});
+app.use('/icons', express.static(iconDir, { fallthrough: false, maxAge: '365d', immutable: true }));
 app.use(express.static(path.join(root, 'public'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 
 const api = express.Router();
@@ -161,14 +177,44 @@ api.get('/me', (req, res) => {
 api.put('/me/theme', (req, res) => {
   const t = req.body ?? {};
   const color = (v) => (/^#[0-9a-f]{6}$/i.test(v ?? '') ? v : undefined);
+  const current = JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? '{}') ?? {};
+  const l = t.logo;
   const theme = {
     preset: String(t.preset ?? 'custom').slice(0, 30),
     accent: color(t.accent),
     highlight: color(t.highlight),
     mode: ['auto', 'light', 'dark'].includes(t.mode) ? t.mode : 'auto',
+    // App icon design (drawn in the browser; see public/js/logo.js)
+    logo: l && typeof l === 'object'
+      ? {
+          preset: String(l.preset ?? 'custom').slice(0, 30),
+          bg: (Array.isArray(l.bg) ? l.bg : []).slice(0, 3).map((c) => color(c) ?? null),
+          angle: ['up', 'down', 'diag', 'solid'].includes(l.angle) ? l.angle : 'diag',
+          c1: color(l.c1),
+          c2: color(l.c2),
+          scale: Math.min(1.3, Math.max(0.6, Number(l.scale) || 1)),
+        }
+      : current.logo,
+    iconId: /^[0-9a-f]{16}$/.test(t.iconId ?? '') ? t.iconId : current.iconId,
   };
   db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(theme), req.user.id);
   res.json(theme);
+});
+
+// Home-screen icon PNGs drawn by the browser for this user's logo design.
+// Stored by content hash, so the URLs are stable and safe to cache forever.
+api.post('/me/icon', express.json({ limit: '3mb' }), (req, res) => {
+  const pngs = {};
+  for (const size of [180, 192, 512, 'maskable']) {
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(req.body?.[size] ?? '');
+    const buf = m && Buffer.from(m[1], 'base64');
+    if (!buf || buf.length > 1024 * 1024 || buf.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') fail(400, `Missing or invalid ${size}px icon`);
+    pngs[size] = buf;
+  }
+  const iconId = crypto.createHash('sha256').update(pngs[512]).digest('hex').slice(0, 16);
+  fs.mkdirSync(iconDir, { recursive: true });
+  for (const [size, buf] of Object.entries(pngs)) fs.writeFileSync(path.join(iconDir, `${iconId}-${size}.png`), buf);
+  res.json({ iconId });
 });
 
 api.post('/me/password', (req, res) => {

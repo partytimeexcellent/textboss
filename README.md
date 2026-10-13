@@ -9,7 +9,7 @@ A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple num
 - **Lists and bulk messages:** tick contacts (or "select all" on a search or list), save them as a named list, and send everyone an individual text with merge fields (`{first_name}`, `{last_name}`, `{full_name}`, `{nickname}`). Sends run in the background at one per second, skipping opted-out and blocked numbers, with a live progress page.
 - **Canned responses:** insert from the composer. Optional keyword auto-reply (an exact one-word match) and an away message (auto-reply at most once per conversation every 12 hours).
 - **Contact import:** upload .xls/.xlsx/.csv in Admin settings with a preview, push contacts from other software with an API key, or drop exports into a watched folder. WebPT's "Patient Listing" report is recognized as-is.
-- **Appearance:** each user picks Light / Dark / Auto and a color theme (presets or custom accent and highlight colors), saved to their account.
+- **Appearance:** each user picks Light / Dark / Auto, a color theme (presets or custom accent and highlight colors), and an app icon design (presets or custom background fade, bubble colors and logo size), saved to their account. The icon is used for the browser tab, sidebar, notifications and, once the app is re-added, the home-screen icon.
 - **Active numbers:** untick numbers you don't use in Admin → Numbers and they disappear from the app; with one active number the number selector is hidden.
 - **Admin settings** in tabs: BulkVS connection (enter and test credentials in the app; these override `.env`), webhook setup and log, numbers, users, contact import and API keys, blocked numbers.
 - **Push notifications:** alerts and an unread badge on the app icon, even when TextBoss is closed. Each device opts in from ⋮ → Notifications, with an option to hide message text on the lock screen. On iPhone and iPad this needs iOS 16.4+ and the app added to the Home Screen from Safari. Android works in Chrome, Firefox, Edge and Samsung Internet, installed or not; most Android launchers show a dot rather than a number on the icon.
@@ -135,7 +135,7 @@ src/db.js                SQLite schema, migrations and access helpers
 src/auth.js              Password hashing (scrypt) and cookie sessions
 src/events.js            Server-sent events hub
 public/app.js            Web app shell, inbox and threads
-public/js/               Contacts, canned responses, admin, theme picker, shared helpers
+public/js/               Contacts, canned responses, admin, theme picker, logo generator, shared helpers
 data/                    SQLite database and uploaded media (created at runtime)
 ```
 

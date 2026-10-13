@@ -1,18 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="62 76 388 388">
-  <defs>
-    <!-- The bubble is cyan; everything right of the diagonal is red -->
-    <clipPath id="red-half">
-      <polygon points="520,52 600,52 600,600 36,590"/>
-    </clipPath>
-    <path id="bubble" fill-rule="evenodd" d="
-      M176 88 H336 A96 96 0 0 1 432 184 V272 A96 96 0 0 1 336 368 H236 L150 452 V362 A96 96 0 0 1 80 272 V184 A96 96 0 0 1 176 88 Z
-      M184 144 H328 A48 48 0 0 1 376 192 V264 A48 48 0 0 1 328 312 H184 A48 48 0 0 1 136 264 V192 A48 48 0 0 1 184 144 Z"/>
-  </defs>
-  <use href="#bubble" fill="#12b4d6"/>
-  <use href="#bubble" fill="#ff4b2b" clip-path="url(#red-half)"/>
-  <g stroke-width="24" stroke-linecap="round">
-    <path d="M182 192 H330" stroke="#12b4d6"/>
-    <path d="M182 230 H304" stroke="#ff4b2b"/>
-    <path d="M182 268 H262" stroke="#12b4d6"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="lg1g" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8a3ffc"/><stop offset=".55" stop-color="#d63fd0"/><stop offset="1" stop-color="#ff7aa8"/></linearGradient><clipPath id="lg1c"><polygon points="520,52 600,52 600,600 36,590"/></clipPath><path id="lg1b" fill-rule="evenodd" d="M176 88 H336 A96 96 0 0 1 432 184 V272 A96 96 0 0 1 336 368 H236 L150 452 V362 A96 96 0 0 1 80 272 V184 A96 96 0 0 1 176 88 Z M184 144 H328 A48 48 0 0 1 376 192 V264 A48 48 0 0 1 328 312 H184 A48 48 0 0 1 136 264 V192 A48 48 0 0 1 184 144 Z"/></defs><rect width="512" height="512" rx="112" fill="url(#lg1g)"/><g transform="translate(-25.6 -41.0) scale(1.1)"><use href="#lg1b" fill="#ffffff"/><use href="#lg1b" fill="#3ee0ff" clip-path="url(#lg1c)"/><g stroke-width="24" stroke-linecap="round"><path d="M182 192 H330" stroke="#ffffff"/><path d="M182 230 H304" stroke="#3ee0ff"/><path d="M182 268 H262" stroke="#ffffff"/></g></g></svg>
