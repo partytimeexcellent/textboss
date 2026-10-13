@@ -186,7 +186,7 @@ export async function notificationsDialog() {
           draw();
         }) }, 'Turn on notifications'),
         on && h('button', { type: 'button', class: 'btn primary', onclick: run(async () => {
-          await api('/push/test', { method: 'POST' });
+          await api('/push/test', { method: 'POST', body: { endpoint: sub.endpoint } });
           fill(result, h('span', { class: 'ok' }, '✓ Test sent. It should arrive within a few seconds.'));
         }) }, 'Send a test'),
         on && h('button', { type: 'button', class: 'btn', onclick: run(async () => {

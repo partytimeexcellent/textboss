@@ -203,15 +203,16 @@ api.post('/push/unsubscribe', (req, res) => {
 api.post('/push/status', (req, res) => res.json(subscriptionStatus(String(req.body?.endpoint ?? ''))));
 
 api.post('/push/test', async (req, res) => {
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(req.user.id);
-  if (!n) fail(400, 'Notifications are not turned on for any of your devices yet');
+  const endpoint = String(req.body?.endpoint ?? '');
+  const sub = db.prepare('SELECT 1 FROM push_subscriptions WHERE user_id = ? AND endpoint = ?').get(req.user.id, endpoint);
+  if (!sub) fail(400, 'Notifications are not turned on for this device yet');
   await pushToUsers([req.user.id], (_u, preview) => ({
     title: preview ? 'TextBoss test' : 'TextBoss',
     body: preview ? 'Notifications are working on this device.' : 'New message',
     url: '/#/',
     tag: 'test',
-  }));
-  res.json({ ok: true, devices: n });
+  }), { onlyEndpoint: endpoint });
+  res.json({ ok: true });
 });
 
 // Total unread for the app-icon badge
