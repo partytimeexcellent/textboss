@@ -13,7 +13,9 @@
     "dev": "node --watch --env-file-if-exists=.env src/server.js"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^14.0.3",
     "express": "^5.1.0",
+    "qrcode": "^1.5.4",
     "web-push": "^3.6.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }

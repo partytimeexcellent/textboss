@@ -49,6 +49,8 @@ export function destroySession(req, res) {
   res.clearCookie(COOKIE);
 }
 
+export const sessionToken = (req) => readCookie(req);
+
 function readCookie(req) {
   const header = req.headers.cookie || '';
   for (const part of header.split(';')) {

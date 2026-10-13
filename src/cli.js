@@ -2,6 +2,7 @@
 //
 //   node src/cli.js list-users
 //   node src/cli.js reset-password <username> [new-password]   (prints a random one if omitted)
+//   node src/cli.js reset-2fa <username>                         (lost phone / security key)
 //   node src/cli.js make-admin <username>
 //
 // With Docker:  docker compose exec app node src/cli.js list-users
@@ -9,6 +10,7 @@
 import crypto from 'node:crypto';
 import { db } from './db.js';
 import { hashPassword } from './auth.js';
+import { resetMfa, mfaStatus } from './mfa.js';
 
 const [command, username, password] = process.argv.slice(2);
 
@@ -29,7 +31,11 @@ switch (command) {
   case 'list-users': {
     const users = db.prepare('SELECT username, display_name, is_admin FROM users ORDER BY username').all();
     if (!users.length) console.log('No users yet. Open TextBoss in a browser to create the first admin.');
-    for (const u of users) console.log(`${u.username.padEnd(24)} ${u.is_admin ? 'admin' : 'user '}  ${u.display_name}`);
+    for (const u of users) {
+      const m = mfaStatus(db.prepare('SELECT id FROM users WHERE username = ?').get(u.username).id);
+      const twoFactor = m.enabled ? [m.totp && 'app', m.passkeys && `${m.passkeys} passkey${m.passkeys > 1 ? 's' : ''}`].filter(Boolean).join(' + ') : 'no 2FA';
+      console.log(`${u.username.padEnd(24)} ${u.is_admin ? 'admin' : 'user '}  ${twoFactor.padEnd(18)} ${u.display_name}`);
+    }
     break;
   }
   case 'reset-password': {
@@ -45,6 +51,14 @@ switch (command) {
     if (!password) console.log(`Temporary password: ${next}\nSign in with it, then change it under ⋮ → Change password.`);
     break;
   }
+  case 'reset-2fa': {
+    const user = findUser(username);
+    resetMfa(user.id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    console.log(`Two-factor sign-in removed for "${user.username}" (authenticator app, passkeys and backup codes).`);
+    console.log('They can sign in with their password and set it up again under ⋮ → Security.');
+    break;
+  }
   case 'make-admin': {
     const user = findUser(username);
     db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(user.id);
@@ -55,6 +69,7 @@ switch (command) {
     console.log(`Usage:
   node src/cli.js list-users
   node src/cli.js reset-password <username> [new-password]
+  node src/cli.js reset-2fa <username>
   node src/cli.js make-admin <username>`);
     process.exit(command ? 1 : 0);
 }

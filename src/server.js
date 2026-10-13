@@ -23,12 +23,15 @@ import {
   verifyPassword,
   createSession,
   destroySession,
+  sessionToken,
 } from './auth.js';
 import { subscribe, publish } from './events.js';
 import { normalizePhone, isValidPhone, participantsKey } from './phone.js';
 import { parseWebhook, testConnection } from './bulkvs.js';
 import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcasts } from './messaging.js';
 import { fail } from './http.js';
+import { securityHeaders, assertNotLocked, recordFailure, recordSuccess, mfaKey } from './security.js';
+import * as mfa from './mfa.js';
 import { parseContactFile, upsertContacts, logImport } from './contacts.js';
 import { router as contactsRouter } from './routes/contacts.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
@@ -57,7 +60,10 @@ fs.mkdirSync(mediaDir, { recursive: true });
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 'loopback');
+// Trust X-Forwarded-* from a reverse proxy on the local/private network (e.g. Pangolin),
+// so login throttling sees the real client IP
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal');
+app.use(securityHeaders);
 
 // ---------- Inbound webhook (no session; protected by the secret path) ----------
 
@@ -138,7 +144,7 @@ api.get('/version', (_req, res) => {
 
 api.get('/setup', (_req, res) => {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
-  res.json({ needed: n === 0, mockMode: isMockMode() });
+  res.json({ needed: n === 0, mockMode: isMockMode(), passkeys: mfa.passkeysAvailable(), origin: new URL(config.publicUrl).origin });
 });
 
 api.post('/setup', (req, res) => {
@@ -157,11 +163,66 @@ api.post('/setup', (req, res) => {
 
 api.post('/login', (req, res) => {
   const { username, password } = req.body ?? {};
+  assertNotLocked(req, username);
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username ?? '').trim());
   if (!user || !verifyPassword(String(password ?? ''), user.password_hash)) {
+    recordFailure(req, username);
     fail(401, 'Wrong username or password');
   }
+  recordSuccess(req, username);
+  const status = mfa.mfaStatus(user.id);
+  if (status.enabled) {
+    // Password is right; the second step finishes signing in
+    return res.json({
+      mfa: {
+        token: mfa.createPendingLogin(user.id),
+        totp: status.totp,
+        passkey: status.passkeys > 0 && mfa.passkeysAvailable(),
+        backup: status.backupLeft > 0,
+      },
+    });
+  }
   createSession(res, user.id);
+  res.json({ ok: true });
+});
+
+// Second step: a code from the authenticator app, or a backup code
+api.post('/login/mfa', (req, res) => {
+  const p = mfa.pendingLogin(req.body?.token);
+  if (!p) fail(401, 'Your sign-in expired. Enter your password again.');
+  assertNotLocked(req, null, [mfaKey(p.userId)]);
+  const used = mfa.verifySecondFactorCode(p.userId, req.body?.code);
+  if (!used) {
+    recordFailure(req, null, [mfaKey(p.userId)]);
+    fail(401, 'That code is not right. Check the time on your phone, or use a backup code.');
+  }
+  mfa.endPendingLogin(req.body.token);
+  createSession(res, p.userId);
+  const left = used === 'backup' ? mfa.mfaStatus(p.userId).backupLeft : null;
+  res.json({ ok: true, backupLeft: left });
+});
+
+// Passkey sign-in: after the password (token) or on its own (passwordless)
+api.post('/login/passkey/options', async (req, res) => {
+  if (!mfa.passkeysAvailable()) fail(400, 'Passkeys need TextBoss to be opened over HTTPS');
+  const p = req.body?.token ? mfa.pendingLogin(req.body.token) : null;
+  if (req.body?.token && !p) fail(401, 'Your sign-in expired. Enter your password again.');
+  res.json(await mfa.passkeyLoginOptions(p?.userId));
+});
+
+api.post('/login/passkey', async (req, res) => {
+  assertNotLocked(req, null);
+  const p = req.body?.token ? mfa.pendingLogin(req.body.token) : null;
+  if (req.body?.token && !p) fail(401, 'Your sign-in expired. Enter your password again.');
+  let userId;
+  try {
+    userId = await mfa.finishPasskeyLogin(String(req.body?.challengeId ?? ''), req.body?.response, p?.userId);
+  } catch (err) {
+    recordFailure(req, null);
+    fail(401, err.message);
+  }
+  if (p) mfa.endPendingLogin(req.body.token);
+  createSession(res, userId);
   res.json({ ok: true });
 });
 
@@ -171,6 +232,91 @@ api.post('/logout', (req, res) => {
 });
 
 api.use(requireUser);
+
+// When the admin requires 2FA, people without it can only reach setup
+const SETUP_PATHS = /^\/(me(\/(security|totp\/.*|passkeys.*|backup-codes))?|logout|version|setup)$/;
+api.use((req, res, next) => {
+  if (mfa.mfaRequired() && !mfa.mfaStatus(req.user.id).enabled && !SETUP_PATHS.test(req.path)) {
+    fail(403, 'Your administrator requires two-factor sign-in. Set it up to continue.', { code: 'mfa_setup_required' });
+  }
+  next();
+});
+
+// Re-entering the password guards removing a sign-in method
+function confirmPassword(req) {
+  const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+  if (!verifyPassword(String(req.body?.password ?? ''), row.password_hash)) fail(400, 'Your current password is not right');
+}
+// Keep at least one method while 2FA is required
+function assertCanRemove(req, remaining) {
+  if (mfa.mfaRequired() && remaining === 0) fail(400, 'Two-factor sign-in is required here, so keep at least one method. Add another before removing this one.');
+}
+
+api.get('/me/security', (req, res) => {
+  res.json({
+    ...mfa.mfaStatus(req.user.id),
+    required: mfa.mfaRequired(),
+    passkeysAvailable: mfa.passkeysAvailable(),
+    origin: new URL(config.publicUrl).origin,
+    passkeyList: mfa.listPasskeys(req.user.id),
+    sessions: db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?').get(req.user.id, Date.now()).n,
+  });
+});
+
+api.post('/me/totp/setup', async (req, res) => res.json(await mfa.startTotpSetup(req.user)));
+
+api.post('/me/totp/enable', (req, res) => {
+  if (!mfa.finishTotpSetup(req.user.id, req.body?.code)) fail(400, 'That code is not right. Enter the current 6-digit code from the app.');
+  // First method: hand out backup codes too
+  const codes = mfa.mfaStatus(req.user.id).backupLeft ? null : mfa.newBackupCodes(req.user.id);
+  res.json({ ok: true, backupCodes: codes });
+});
+
+api.post('/me/totp/disable', (req, res) => {
+  confirmPassword(req);
+  const s = mfa.mfaStatus(req.user.id);
+  assertCanRemove(req, s.passkeys);
+  mfa.disableTotp(req.user.id);
+  res.json({ ok: true });
+});
+
+api.post('/me/backup-codes', (req, res) => {
+  confirmPassword(req);
+  if (!mfa.mfaStatus(req.user.id).enabled) fail(400, 'Set up an authenticator app or a passkey first');
+  res.json({ codes: mfa.newBackupCodes(req.user.id) });
+});
+
+api.post('/me/passkeys/options', async (req, res) => {
+  if (!mfa.passkeysAvailable()) fail(400, 'Passkeys need TextBoss to be opened over HTTPS');
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  res.json(await mfa.passkeyRegistrationOptions(user));
+});
+
+api.post('/me/passkeys', async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const first = !mfa.mfaStatus(req.user.id).enabled;
+  try {
+    await mfa.finishPasskeyRegistration(user, req.body?.response, req.body?.name);
+  } catch (err) {
+    fail(400, err.message);
+  }
+  const codes = first && !mfa.mfaStatus(req.user.id).backupLeft ? mfa.newBackupCodes(req.user.id) : null;
+  res.json({ ok: true, backupCodes: codes });
+});
+
+api.post('/me/passkeys/:id/remove', (req, res) => {
+  confirmPassword(req);
+  const s = mfa.mfaStatus(req.user.id);
+  assertCanRemove(req, (s.totp ? 1 : 0) + s.passkeys - 1);
+  mfa.removePasskey(req.user.id, req.params.id);
+  res.json({ ok: true });
+});
+
+// Sign out everywhere except this browser
+api.post('/me/sessions/revoke-others', (req, res) => {
+  const { changes } = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, sessionToken(req));
+  res.json({ ok: true, signedOut: changes });
+});
 
 api.get('/me', (req, res) => {
   const ids = userNumberIds(req.user);
@@ -188,6 +334,7 @@ api.get('/me', (req, res) => {
     },
     numbers,
     mockMode: isMockMode(),
+    security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled },
     theme: JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? 'null'),
   });
 });
@@ -543,7 +690,9 @@ function validateNewUser(username, password) {
 }
 
 function userWithNumbers(u) {
+  const m = mfa.mfaStatus(u.id);
   return {
+    mfa: { totp: m.totp, passkeys: m.passkeys },
     id: u.id,
     username: u.username,
     displayName: u.display_name,
@@ -551,6 +700,23 @@ function userWithNumbers(u) {
     numberIds: db.prepare('SELECT number_id FROM user_numbers WHERE user_id = ?').all(u.id).map((r) => r.number_id),
   };
 }
+
+admin.post('/users/:id/reset-2fa', (req, res) => {
+  const id = Number(req.params.id);
+  mfa.resetMfa(id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND user_id != ?').run(id, req.user.id);
+  res.json({ ok: true });
+});
+
+admin.get('/security', (_req, res) => res.json({ require2fa: mfa.mfaRequired() }));
+
+admin.put('/security', (req, res) => {
+  if (req.body?.require2fa && !mfa.mfaStatus(req.user.id).enabled) {
+    fail(400, 'Set up two-factor sign-in on your own account first (⋮ → Security), so you are not locked out.');
+  }
+  setSetting('security.require2fa', req.body?.require2fa ? '1' : null);
+  res.json({ require2fa: mfa.mfaRequired() });
+});
 
 admin.get('/users', (_req, res) => {
   res.json(db.prepare('SELECT * FROM users ORDER BY username').all().map(userWithNumbers));

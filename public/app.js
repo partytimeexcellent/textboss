@@ -1,7 +1,7 @@
 // TextBoss web client. No build step: plain ES modules and DOM APIs.
 
 import {
-  h, fill, icon, autoFocus, state, els, route, api, setUnauthorizedHandler, loadIndex, loadCanned, loadLists,
+  h, fill, icon, autoFocus, state, els, route, api, setUnauthorizedHandler, setSetupRequiredHandler, loadIndex, loadCanned, loadLists,
   toast, formatPhone, fullName, nameFor, conversationName, numberLabel, numberOptions, conversationAvatar,
   relTime, store, dialog, confirmDialog, confirmOptOutDialog, openMenu, backButton, buildComposer,
 } from './js/core.js';
@@ -11,12 +11,17 @@ import { renderAdmin } from './js/admin.js';
 import { applyTheme, themePicker, currentLogo } from './js/theme.js';
 import { logoSvg } from './js/logo.js';
 import { initPush, notificationsDialog, updateBadge } from './js/notify.js';
+import { renderSecurity, renderSecurityPage } from './js/security.js';
+import { passkeysSupported, getPasskey } from './js/webauthn.js';
 
 const app = document.getElementById('app');
 
 setUnauthorizedHandler(() => {
   state.me = null;
   render();
+});
+setSetupRequiredHandler(() => {
+  if (state.me && !state.security?.setupShown) boot();
 });
 
 async function boot() {
@@ -26,6 +31,7 @@ async function boot() {
     state.numbers = me.numbers;
     state.mockMode = me.mockMode;
     state.theme = applyTheme(me.theme);
+    state.security = me.security;
     initPush();
   } catch {
     state.me = null;
@@ -38,6 +44,10 @@ function render() {
     state.events?.close();
     state.events = null;
     renderAuth();
+    return;
+  }
+  if (state.security?.required && !state.security.enabled) {
+    renderSetupRequired();
     return;
   }
   renderShell();
@@ -58,6 +68,8 @@ document.addEventListener('keydown', (e) => {
 async function renderAuth() {
   const setup = await api('/setup').catch(() => ({ needed: false }));
   const error = h('div', { class: 'form-error' });
+  const logo = h('h1', {}, h('span', { class: 'logo', 'data-logo': '34', html: logoSvg(currentLogo(), { size: 34 }) }), 'TextBoss');
+  const canPasskey = !setup.needed && setup.passkeys && passkeysSupported(setup.origin);
   const fields = setup.needed
     ? [
         h('label', {}, 'Your name', h('input', { type: 'text', name: 'displayName', autocomplete: 'name' })),
@@ -65,7 +77,7 @@ async function renderAuth() {
         h('label', {}, 'Password (8+ characters)', h('input', { type: 'password', name: 'password', required: true, minLength: 8, autocomplete: 'new-password' })),
       ]
     : [
-        h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'username' })),
+        h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'username webauthn' })),
         h('label', {}, 'Password', h('input', { type: 'password', name: 'password', required: true, autocomplete: 'current-password' })),
       ];
 
@@ -76,21 +88,132 @@ async function renderAuth() {
         e.preventDefault();
         error.textContent = '';
         try {
-          await api(setup.needed ? '/setup' : '/login', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+          const r = await api(setup.needed ? '/setup' : '/login', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+          if (r.mfa) return renderSecondStep(r.mfa, logo);
           await boot();
         } catch (err) {
           error.textContent = err.message;
         }
       },
     },
-    h('h1', {}, h('span', { class: 'logo', 'data-logo': '34', html: logoSvg(currentLogo(), { size: 34 }) }), 'TextBoss'),
+    logo,
     h('p', {}, setup.needed ? 'Create the first admin account.' : 'Sign in to your team inbox.'),
     fields,
     error,
     h('button', { class: 'btn primary', type: 'submit' }, setup.needed ? 'Create account' : 'Sign in'),
+    canPasskey && h('div', { class: 'auth-or' }, 'or'),
+    canPasskey && h('button', {
+      class: 'btn',
+      type: 'button',
+      onclick: async () => {
+        error.textContent = '';
+        try {
+          await passkeySignIn();
+          await boot();
+        } catch (err) {
+          error.textContent = err.message;
+        }
+      },
+    }, icon('key'), 'Sign in with a passkey'),
   );
   fill(app, h('div', { class: 'auth' }, form));
   autoFocus(form.querySelector('input'));
+}
+
+// token: the password was already accepted (passkey as the second step)
+async function passkeySignIn(token) {
+  const { options, challengeId } = await api('/login/passkey/options', { method: 'POST', body: { token } });
+  const response = await getPasskey(options);
+  await api('/login/passkey', { method: 'POST', body: { token, challengeId, response } });
+}
+
+function renderSecondStep(m, logo) {
+  const error = h('div', { class: 'form-error' });
+  let useBackup = !m.totp;
+  const code = h('input', { type: 'text', name: 'code', required: true, autocomplete: 'one-time-code', class: 'code-input' });
+  const label = h('span', {});
+  const hint = h('p', {});
+  const toggle = h('button', { type: 'button', class: 'link-btn' });
+  const draw = () => {
+    label.textContent = useBackup ? 'Backup code' : '6-digit code';
+    code.inputMode = useBackup ? 'text' : 'numeric';
+    code.placeholder = useBackup ? 'xxxx-xxxx' : '123 456';
+    hint.textContent = useBackup ? 'Enter one of your saved backup codes. Each works once.' : 'Enter the code from your authenticator app.';
+    toggle.textContent = useBackup ? 'Use the authenticator app instead' : 'Use a backup code instead';
+    toggle.hidden = !(m.totp && m.backup);
+    code.value = '';
+    code.focus();
+  };
+  toggle.addEventListener('click', () => {
+    useBackup = !useBackup;
+    draw();
+  });
+
+  const finish = async (fn) => {
+    error.textContent = '';
+    try {
+      const r = await fn();
+      if (r?.backupLeft != null && r.backupLeft <= 2) {
+        toast(`You have ${r.backupLeft} backup code${r.backupLeft === 1 ? '' : 's'} left. Make new ones under ⋮ → Security.`);
+      }
+      await boot();
+    } catch (err) {
+      error.textContent = err.message;
+      if (/expired/.test(err.message)) setTimeout(renderAuth, 1500);
+    }
+  };
+
+  const passkeyBtn = m.passkey && h('button', {
+    class: 'btn',
+    type: 'button',
+    onclick: () => finish(() => passkeySignIn(m.token)),
+  }, icon('key'), 'Use a passkey');
+
+  const showCodes = m.totp || m.backup;
+  const form = h('form', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      finish(() => api('/login/mfa', { method: 'POST', body: { token: m.token, code: code.value } }));
+    },
+  },
+    logo,
+    h('p', {}, 'Two-factor sign-in'),
+    showCodes && hint,
+    showCodes && h('label', {}, label, code),
+    error,
+    showCodes && h('button', { class: 'btn primary', type: 'submit' }, 'Verify'),
+    showCodes && toggle,
+    passkeyBtn && showCodes && h('div', { class: 'auth-or' }, 'or'),
+    passkeyBtn,
+    h('button', { type: 'button', class: 'link-btn', onclick: renderAuth }, 'Back'),
+  );
+  fill(app, h('div', { class: 'auth' }, form));
+  if (showCodes) draw();
+  else passkeyBtn?.focus();
+}
+
+// The admin requires 2FA and this person has none yet
+function renderSetupRequired() {
+  state.security.setupShown = true;
+  const body = h('div', { class: 'setup-required' });
+  fill(app, h('div', { class: 'auth setup-wrap' },
+    h('div', { class: 'setup-card' },
+      h('h1', {}, h('span', { class: 'logo', html: logoSvg(currentLogo(), { size: 34 }) }), 'Set up two-factor sign-in'),
+      h('p', { class: 'hint' }, `Hi ${state.me.displayName}. Your administrator requires a second step when signing in. Choose one below; it takes about a minute.`),
+      body,
+      h('button', { type: 'button', class: 'link-btn', onclick: async () => {
+        await api('/logout', { method: 'POST' });
+        state.me = null;
+        render();
+      } }, 'Sign out'))));
+  renderSecurity(body, {
+    forced: true,
+    onEnabled: async () => {
+      state.security.enabled = true;
+      toast('Two-factor sign-in is on');
+      await boot();
+    },
+  });
 }
 
 // ---------- Shell ----------
@@ -155,6 +278,7 @@ function renderRoute() {
     case 'new': return renderNewMessage();
     case 'admin': return state.me.isAdmin ? renderAdmin() : placeholder('Admins only.');
     case 'canned': return renderCanned();
+    case 'security': return renderSecurityPage(els.main);
     case 'contacts':
     case 'contact':
     case 'bulk':
@@ -173,6 +297,7 @@ function openUserMenu(anchor) {
   openMenu(anchor, [
     ['Canned responses', () => (location.hash = '#/canned')],
     ['Appearance', () => themePicker(state.theme, (t) => (state.theme = t))],
+    ['Security', () => (location.hash = '#/security')],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
     ['Notifications', notificationsDialog],
     ['Change password', changePasswordDialog],

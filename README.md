@@ -45,6 +45,15 @@ With no reverse proxy, run `docker compose --profile caddy up -d --build` instea
 
 Data (database and uploaded media) lives in the `textboss-data` volume. To update, pull the new code and run the same `up` command again.
 
+### Sign-in security
+
+- **Two-factor sign-in:** each person adds an authenticator app (six-digit codes) and/or passkeys under ⋮ → Security. Passkeys cover Face ID, Touch ID, Windows Hello, Android screen lock and USB/NFC keys like YubiKey, and work with or without a password. Ten one-time backup codes are issued with the first method.
+- **Require it for everyone:** Admin settings → Users → Sign-in security. People without 2FA are walked through setup the next time they use TextBoss. Admins must set up their own first.
+- **Lost phone or key:** Admin settings → Users → Reset 2FA, or `docker compose exec app node src/cli.js reset-2fa <username>`.
+- **Brute-force protection:** 8 wrong passwords or 6 wrong codes lock that username for 15 minutes. Each IP address is limited to 30 failures.
+- **Passkeys need HTTPS** and are tied to `PUBLIC_URL`'s domain, so set `PUBLIC_URL` to the exact address people use. They aren't offered over `http://` on the local network. Authenticator codes work everywhere.
+- **Security headers:** TextBoss sends CSP, frame-blocking and HSTS headers. Behind a proxy, `TRUST_PROXY` (default: private networks) decides whose `X-Forwarded-For` is trusted for the client IP.
+
 ### Locked out?
 
 Run these on the server:
@@ -52,6 +61,7 @@ Run these on the server:
 ```bash
 docker compose exec app node src/cli.js list-users
 docker compose exec app node src/cli.js reset-password <username>
+docker compose exec app node src/cli.js reset-2fa <username>
 docker compose exec app node src/cli.js make-admin <username>
 ```
 
@@ -141,7 +151,9 @@ src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
 src/backup.js            Backup download, restore staging and swap-in at startup
 src/push.js              Web Push (VAPID keys, subscriptions, sending, badge counts)
-src/cli.js               Account recovery: list users, reset a password, make an admin
+src/cli.js               Account recovery: list users, reset a password or 2FA, make an admin
+src/mfa.js               Two-factor: authenticator codes (TOTP), backup codes, passkeys (WebAuthn)
+src/security.js          Login throttling and HTTP security headers
 public/sw.js             Service worker: shows push notifications, sets the app badge
 src/bulkvs.js            All BulkVS-specific code (send, connection test, webhook parsing)
 src/provider.js          BulkVS credentials (admin settings, then .env)

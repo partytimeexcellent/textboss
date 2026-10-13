@@ -40,7 +40,7 @@ export async function renderAdmin() {
     body);
   fill(body, h('div', { class: 'hint' }, 'Loading…'));
   try {
-    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsers, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderBulkvs;
+    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsersTab, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderBulkvs;
     const content = await render();
     if (route().view !== 'admin' || route().section !== section) return; // navigated away meanwhile
     fill(body, content);
@@ -225,8 +225,13 @@ async function renderNumbers() {
 
 // ---------- Users ----------
 
+async function renderUsersTab() {
+  const [list, security, users] = await Promise.all([renderUsers(), api('/admin/security'), api('/admin/users')]);
+  return [securityPolicyCard(security, users), list];
+}
+
 async function renderUsers() {
-  const [users, numbers] = await Promise.all([api('/admin/users'), api('/admin/numbers')]);
+  const [users, numbers, security] = await Promise.all([api('/admin/users'), api('/admin/numbers'), api('/admin/security')]);
 
   const numberChecks = (selected = []) =>
     h('div', { class: 'checks' }, numbers.length
@@ -256,19 +261,49 @@ async function renderUsers() {
   return card('Users',
     'Who can sign in, and which numbers each person can see and send from. Contacts, lists and canned responses are shared by everyone.',
     h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Username'), h('th', {}, 'Access'), h('th', { class: 'right' }, 'Actions'))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Username'), h('th', {}, 'Access'), h('th', {}, 'Two-factor'), h('th', { class: 'right' }, 'Actions'))),
       h('tbody', {}, users.map((u) => h('tr', {},
         h('td', { class: 'strong' }, u.displayName, u.id === state.me.id && h('span', { class: 'hint' }, ' (you)')),
         h('td', {}, u.username),
         h('td', {}, u.isAdmin ? pill('Admin · all numbers', 'accent') : u.numberIds.length ? u.numberIds.map(numberLabel).join(', ') : pill('No numbers', 'warn')),
+        h('td', {}, u.mfa.totp || u.mfa.passkeys
+          ? pill([u.mfa.totp && 'App', u.mfa.passkeys && `${u.mfa.passkeys} passkey${u.mfa.passkeys > 1 ? 's' : ''}`].filter(Boolean).join(' + '), 'ok')
+          : pill('Off', security.require2fa ? 'warn' : '')),
         h('td', {}, h('div', { class: 'row-actions' },
           h('button', { class: 'btn', onclick: () => userDialog(u) }, 'Edit'),
+          (u.mfa.totp || u.mfa.passkeys > 0) && u.id !== state.me.id && h('button', { class: 'btn', title: 'For a lost phone or security key', onclick: async () => {
+            if (!(await confirmDialog(`Reset two-factor for ${u.displayName}?`, 'Their authenticator app, passkeys and backup codes are removed and they are signed out everywhere. They sign in with just their password and set two-factor up again' + (security.require2fa ? ' (required).' : '.'), 'Reset', { danger: true }))) return;
+            await api(`/admin/users/${u.id}/reset-2fa`, { method: 'POST' });
+            toast(`Two-factor reset for ${u.displayName}`);
+            renderAdmin();
+          } }, 'Reset 2FA'),
           u.id !== state.me.id && h('button', { class: 'btn danger', onclick: async () => {
             if (!(await confirmDialog(`Delete ${u.displayName}?`, 'They will no longer be able to sign in. Messages they sent are kept.', 'Delete', { danger: true }))) return;
             await api(`/admin/users/${u.id}`, { method: 'DELETE' });
             renderAdmin();
           } }, 'Delete')))))))),
     h('div', { class: 'card-actions' }, h('button', { class: 'btn primary', onclick: () => userDialog(null) }, 'Add user')));
+}
+
+function securityPolicyCard(security, users) {
+  const missing = users.filter((u) => !u.mfa.totp && !u.mfa.passkeys);
+  const toggle = h('input', { type: 'checkbox', class: 'switch', checked: security.require2fa, onchange: async () => {
+    try {
+      await api('/admin/security', { method: 'PUT', body: { require2fa: toggle.checked } });
+      toast(toggle.checked ? 'Two-factor sign-in is now required' : 'Two-factor sign-in is now optional');
+      renderAdmin();
+    } catch (err) {
+      toggle.checked = !toggle.checked;
+      toast(err.message);
+    }
+  } });
+  return card('Sign-in security',
+    'Two-factor sign-in asks for a code from an authenticator app or a passkey (Face ID, Touch ID, Windows Hello, a security key) after the password. Each person sets it up under ⋮ → Security.',
+    h('label', { class: 'switch-label' }, toggle,
+      h('span', {}, h('strong', {}, 'Require two-factor sign-in for everyone'),
+        h('span', { class: 'hint' }, ' — people without it are taken through setup the next time they use TextBoss.'))),
+    missing.length > 0 && h('p', { class: 'hint' }, `Not set up yet: ${missing.map((u) => u.displayName).join(', ')}.`),
+    h('p', { class: 'hint' }, 'Someone lost their phone or key? Use Reset 2FA next to their name. Failed sign-ins lock that username for 15 minutes after 8 wrong passwords or 6 wrong codes.'));
 }
 
 // ---------- Contacts & import ----------
