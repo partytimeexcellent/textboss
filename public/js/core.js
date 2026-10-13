@@ -32,7 +32,44 @@ const ICONS = {
   plus: svg('<path d="M12 5v14"/><path d="M5 12h14"/>'),
   ban: svg('<circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/>'),
   warning: svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>'),
+  eye: svg('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>'),
+  emoji: svg('<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/>'),
+  download: svg('<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>'),
+  pin: svg('<path d="M9 4h6l-1 6 3 3v2H7v-2l3-3Z"/><path d="M12 15v5"/>'),
+  flag: svg('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
 };
+
+// A small built-in emoji set (no third-party picker); grouped for browsing
+const EMOJI = {
+  Smileys: '😀 😃 😄 😁 😊 🙂 😉 😍 🥰 😘 😎 🤗 🤔 😐 😅 😂 🤣 😇 🥳 😴 😢 😭 😮 😬 🙄 😕 🤒 🤕 😷',
+  Gestures: '👍 👎 👌 ✌️ 🤞 👏 🙌 🙏 💪 👋 🤝 ✋ 👉 👈 ☝️ 👇 🫶',
+  Hearts: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💕 💖 💯 ✨ ⭐ 🌟 🎉 🎊 🎈 🎁',
+  Health: '🏥 🩺 💊 🩹 🦴 🦵 🦶 🧘 🏃 🚶 🏋️ 🚴 🧊 🔥 ♿',
+  Weather: '☀️ 🌤️ ⛅ 🌧️ ⛈️ 🌨️ ❄️ ☃️ 🌬️ 🌪️ 🌈 ☔ 🌡️',
+  Objects: '📅 🗓️ ⏰ ⏳ 📞 📱 💬 📧 📍 🚗 🅿️ 🏠 🏢 📝 📋 ✅ ❌ ⚠️ ❗ ❓ ➡️ ⬆️ 🔔 🎄 🎃 🦃 🍀',
+};
+
+export function openEmojiPicker(anchor, onPick) {
+  document.querySelector('.picker')?.remove();
+  const close = () => {
+    picker.remove();
+    document.removeEventListener('mousedown', outside);
+  };
+  const outside = (e) => !picker.contains(e.target) && close();
+  const picker = h('div', { class: 'picker emoji-picker', role: 'dialog', 'aria-label': 'Emoji' },
+    h('div', { class: 'picker-list' },
+      Object.entries(EMOJI).map(([group, list]) => [
+        h('div', { class: 'emoji-group' }, group),
+        h('div', { class: 'emoji-grid' }, list.split(' ').map((e) =>
+          h('button', { type: 'button', title: e, onclick: () => onPick(e) }, e))),
+      ])),
+    h('div', { class: 'picker-manage hint' }, 'Tip: on a Mac press Ctrl+Cmd+Space, on Windows Win+. for every emoji. Emojis make a text use 70 characters per part instead of 160.'));
+  document.body.append(picker);
+  const r = anchor.getBoundingClientRect();
+  picker.style.left = `${Math.max(8, Math.min(r.left, innerWidth - picker.offsetWidth - 8))}px`;
+  picker.style.top = `${Math.max(8, r.top - picker.offsetHeight - 6)}px`;
+  setTimeout(() => document.addEventListener('mousedown', outside));
+}
 // replaceChildren, skipping null/false like h() does
 export function fill(el, ...children) {
   el.replaceChildren(...children.flat(Infinity).filter((c) => c != null && c !== false));
@@ -53,7 +90,8 @@ export const state = {
   lists: [],
   filterNumber: store('tb.number') || 'all',
   search: '',
-  showArchived: false,
+  convFilter: '', // '' | 'unread' | 'flagged' | 'archived'
+  theme: null,
   conversations: [],
   thread: null,
   events: null,
@@ -71,7 +109,7 @@ export function route() {
   if (view === 'contacts' && id === 'new') return { view: 'contact', id: null, tab: 'contacts', query: new URLSearchParams(query) };
   if (view === 'c' && id) return { view: 'thread', id: Number(id), tab: 'messages' };
   if (view === 'new') return { view: 'new', tab: 'messages' };
-  if (view === 'admin') return { view: 'admin', tab: 'messages' };
+  if (view === 'admin') return { view: 'admin', tab: 'messages', section: id || 'bulkvs' };
   if (view === 'canned') return { view: 'canned', tab: 'messages' };
   if (view === 'contacts') {
     if (id === 'new') return { view: 'contact', id: null, tab: 'contacts' };
@@ -437,12 +475,25 @@ export function buildComposer(onSend, { errorEl, mergeContact, placeholder = 'Te
   }
   sendBtn.addEventListener('click', send);
 
+  // Insert at the cursor and keep the picker open for more
+  const insertEmoji = (emoji) => {
+    const start = text.selectionStart ?? text.value.length;
+    const end = text.selectionEnd ?? start;
+    text.value = text.value.slice(0, start) + emoji + text.value.slice(end);
+    text.selectionStart = text.selectionEnd = start + emoji.length;
+    refresh();
+    text.focus();
+  };
+
   const cannedBtn = h('button', { class: 'icon-btn', title: 'Canned responses', type: 'button', onclick: (e) => openCannedPicker(e.currentTarget, insertCanned) }, icon('canned'));
+  const emojiBtn = h('button', { class: 'icon-btn', title: 'Emoji', type: 'button', onclick: (e) => openEmojiPicker(e.currentTarget, insertEmoji) }, icon('emoji'));
   const el = h('div', { class: `composer${sendLabel ? ' composer-block' : ''}` },
     attachRow,
     h('div', { class: 'composer-row' },
-      h('button', { class: 'icon-btn', title: 'Attach', type: 'button', onclick: () => file.click() }, icon('attach')),
-      cannedBtn,
+      h('div', { class: 'composer-tools' },
+        h('button', { class: 'icon-btn', title: 'Attach', type: 'button', onclick: () => file.click() }, icon('attach')),
+        emojiBtn,
+        cannedBtn),
       text, sendBtn, file),
     counter,
   );

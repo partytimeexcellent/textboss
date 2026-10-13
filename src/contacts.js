@@ -42,8 +42,18 @@ export function getContact(id) {
 
 export const fullName = (c) => [c.firstName ?? c.first_name, c.lastName ?? c.last_name].filter(Boolean).join(' ');
 
-// Accepts YYYY-MM-DD, MM/DD/YYYY, M/D/YY, Excel serials and Date objects
+// Accepts YYYY-MM-DD, MM/DD/YYYY, M/D/YY, Excel serials and Date objects.
+// Anything that is not a real calendar date comes back unchanged (and fails validation).
 export function normalizeDob(value) {
+  const out = parseDob(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(out);
+  if (!m) return out;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  const real = d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+  return real && +m[1] >= 1900 && d <= new Date() ? out : `invalid:${String(value).trim()}`;
+}
+
+function parseDob(value) {
   if (value == null || value === '') return '';
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
@@ -151,12 +161,14 @@ export function parseContactFile(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   if (!sheet) throw new Error('The file has no sheets');
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null, blankrows: false });
+  // Keep blank rows so row numbers match what Excel shows
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null, blankrows: true });
+  const firstRow = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']).s.r + 1 : 1;
 
   let headerIdx = -1;
   let mapping = null;
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
-    const m = rows[i].map(mapHeader);
+    const m = (rows[i] ?? []).map(mapHeader);
     const hasName = m.some((f) => ['firstName', 'lastName', 'fullName'].includes(f));
     const hasPhone = m.some((f) => ['cellPhone', 'phone', 'homePhone', 'workPhone'].includes(f));
     if (hasName && hasPhone) {
@@ -174,12 +186,15 @@ export function parseContactFile(buffer) {
     .filter((c) => c.header);
 
   const records = [];
-  for (const row of rows.slice(headerIdx + 1)) {
+  for (let r = headerIdx + 1; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    if (!row.some((v) => v != null && String(v).trim() !== '')) continue;
     const get = (field) => {
       const i = mapping.indexOf(field);
       return i >= 0 ? row[i] : null;
     };
     const rec = {
+      _row: firstRow + r,
       firstName: get('firstName'),
       lastName: get('lastName'),
       dob: get('dob'),
@@ -209,26 +224,61 @@ export function parseContactFile(buffer) {
 // Insert or update contacts. Matches on patient ID when present, otherwise on
 // phone + first + last name. Only fields present in the input are changed, so
 // an import never wipes notes or other data the export does not include.
+//
+// A bad phone, email or DOB does not skip the contact: that one field is left
+// out (so an existing good value is kept) and reported in `issues`, with the
+// row, name and patient ID so the source data can be fixed.
+const FIELD_LABEL = { phone: 'Phone', email: 'Email', dob: 'Date of birth' };
+const MAX_ISSUES = 2000;
+const MAX_CHANGES = 1000;
+
 export function upsertContacts(inputs, { dryRun = false } = {}) {
-  const result = { created: 0, updated: 0, unchanged: 0, skipped: 0, errors: [], preview: [] };
+  const result = {
+    created: 0, updated: 0, unchanged: 0, skipped: 0,
+    issues: [], issueCount: 0, changes: [], changeCount: 0, preview: [], errors: [],
+  };
   const byPatient = db.prepare(`SELECT * FROM contacts WHERE patient_id = ? AND patient_id != '' LIMIT 1`);
   const byPhoneName = db.prepare(
     `SELECT * FROM contacts WHERE phone = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE LIMIT 1`,
   );
 
+  const report = (row, c, field, value, problem) => {
+    result.issueCount++;
+    if (result.issues.length >= MAX_ISSUES) return;
+    result.issues.push({
+      row,
+      name: fullName(c) || '(no name)',
+      patientId: c.patientId ?? '',
+      field: FIELD_LABEL[field] ?? field,
+      value: value == null ? '' : String(value),
+      problem,
+    });
+  };
+
   const run = () => {
     inputs.forEach((raw, i) => {
+      const row = raw._row ?? i + 1;
       const c = cleanContact(raw);
-      if (!c.firstName && !c.lastName && !c.phone) {
+
+      // Drop invalid fields, keep the contact
+      if (c.phone && !isValidPhone(c.phone)) {
+        report(row, c, 'phone', raw.phone, 'Not a valid US phone number; imported without it');
+        delete c.phone;
+      }
+      if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) {
+        report(row, c, 'email', raw.email, 'Not a valid email; imported without it');
+        delete c.email;
+      }
+      if (c.dob && !/^\d{4}-\d{2}-\d{2}$/.test(c.dob)) {
+        report(row, c, 'dob', raw.dob, 'Unrecognized date; imported without it');
+        delete c.dob;
+      }
+      if (!c.firstName && !c.lastName) {
         result.skipped++;
+        if (c.phone || c.patientId) report(row, c, 'name', '', 'No first or last name; row skipped');
         return;
       }
-      const err = validateContact(c);
-      if (err) {
-        result.skipped++;
-        if (result.errors.length < 50) result.errors.push(`Row ${i + 1}: ${err}`);
-        return;
-      }
+
       const existing =
         (c.patientId && byPatient.get(c.patientId)) ||
         (c.phone && byPhoneName.get(c.phone, c.firstName ?? '', c.lastName ?? ''));
@@ -240,12 +290,22 @@ export function upsertContacts(inputs, { dryRun = false } = {}) {
         if (!dryRun) createContact(c);
       } else {
         const changes = {};
+        const diff = [];
         for (const f of CONTACT_FIELDS) {
-          if (c[f] !== undefined && c[f] !== '' && c[f] !== existing[COLUMN[f]]) changes[f] = c[f];
+          if (c[f] !== undefined && c[f] !== '' && c[f] !== existing[COLUMN[f]]) {
+            changes[f] = c[f];
+            diff.push({ field: f, from: existing[COLUMN[f]] ?? '', to: c[f] });
+          }
         }
-        action = Object.keys(changes).length ? 'update' : 'unchanged';
+        action = diff.length ? 'update' : 'unchanged';
         result[action === 'update' ? 'updated' : 'unchanged']++;
-        if (!dryRun && action === 'update') updateContact(existing.id, changes);
+        if (diff.length) {
+          result.changeCount++;
+          if (result.changes.length < MAX_CHANGES) {
+            result.changes.push({ row, name: fullName({ ...serializeContact(existing), ...c }), patientId: c.patientId ?? existing.patient_id, diff });
+          }
+          if (!dryRun) updateContact(existing.id, changes);
+        }
       }
       if (!dryRun && raw.optedOut !== undefined && c.phone) setOptOut(c.phone, !!raw.optedOut, 'import');
       if (result.preview.length < 10) result.preview.push({ action, ...c });
@@ -253,13 +313,15 @@ export function upsertContacts(inputs, { dryRun = false } = {}) {
   };
   if (dryRun) run();
   else tx(run);
+  // Short text form for API clients
+  result.errors = result.issues.slice(0, 50).map((x) => `Row ${x.row} (${x.name}${x.patientId ? `, #${x.patientId}` : ''}): ${x.field} "${x.value}": ${x.problem}`);
   return result;
 }
 
 export function logImport(source, filename, result, error = null) {
   db.prepare(
-    'INSERT INTO import_log (source, filename, created, updated, skipped, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-  ).run(source, filename ?? null, result?.created ?? 0, result?.updated ?? 0, result?.skipped ?? 0, error, Date.now());
+    'INSERT INTO import_log (source, filename, created, updated, skipped, issues, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(source, filename ?? null, result?.created ?? 0, result?.updated ?? 0, result?.skipped ?? 0, result?.issueCount ?? 0, error, Date.now());
   db.prepare('DELETE FROM import_log WHERE id <= (SELECT MAX(id) - 200 FROM import_log)').run();
 }
 

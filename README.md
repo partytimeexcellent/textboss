@@ -2,13 +2,15 @@
 
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
-- **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts and archive. 1:1 and group threads, MMS attachments, delivery status, and who on the team sent each message. Per-conversation menu: mark unread, archive, opt out/in, block sender, delete history.
+- **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, delivery status, and who on the team sent each message. Per-conversation menu: pin to top, flag as important, mark unread, archive, opt out/in, block sender, delete history. Pins and flags are shared by the team.
 - **Contacts:** first/last name, mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
 - **Opt-out:** applies to the phone number. Texting an opted-out number brings up a warning you must confirm by typing SEND, and the server enforces it. Replies of STOP, UNSUBSCRIBE, etc. opt out automatically, and START opts back in.
 - **Blocked senders:** their texts are dropped. Manage them in Admin settings.
 - **Lists and bulk messages:** tick contacts (or "select all" on a search or list), save them as a named list, and send everyone an individual text with `{first_name}`-style merge fields. Sends run in the background at one per second, skipping opted-out and blocked numbers, with a live progress page.
 - **Canned responses:** insert from the composer. Optional keyword auto-reply (an exact one-word match) and an away message (auto-reply at most once per conversation every 12 hours).
 - **Contact import:** upload .xls/.xlsx/.csv in Admin settings with a preview, push contacts from other software with an API key, or drop exports into a watched folder. WebPT's "Patient Listing" report is recognized as-is.
+- **Appearance:** each user picks Light / Dark / Auto and a color theme (presets or custom accent and highlight colors), saved to their account.
+- **Admin settings** in tabs: BulkVS connection (enter and test credentials in the app; these override `.env`), webhook setup and log, numbers, users, contact import and API keys, blocked numbers.
 - Live updates across all signed-in users (server-sent events), browser notifications, and installable on a phone (PWA).
 
 Stack: Node 22.13+ with the built-in `node:sqlite`, Express 5, and plain JavaScript in the browser, with no build step.
@@ -64,7 +66,7 @@ Other options:
 ## Going live with BulkVS
 
 1. **Host it on public HTTPS.** BulkVS has to reach your webhook, and carriers have to download MMS attachments you send. Any VPS behind Pangolin, Caddy or nginx works. Behind Pangolin, add the bypass rules described above. For testing from your Mac, use `cloudflared tunnel --url http://localhost:3000` or ngrok. Set `PUBLIC_URL` to that address and remove `INSECURE_COOKIES`.
-2. **Credentials.** In the [BulkVS portal](https://portal.bulkvs.com/login.php), open **API → API Credentials**. Under "API Information – REST API", copy the **Username** into `BULKVS_USERNAME` and the **Password** into `BULKVS_PASSWORD`. These are separate from your portal login.
+2. **Credentials.** In the [BulkVS portal](https://portal.bulkvs.com/login.php), open **API → API Credentials**. Under "API Information – REST API", copy the **Username** and **Password**. These are separate from your portal login. Enter them in TextBoss under **Admin settings → BulkVS** and click **Test connection**. Alternatively, set `BULKVS_USERNAME` and `BULKVS_PASSWORD` in `.env`; values saved in the app take priority. The saved password is stored in the database, like `.env` stores it on disk, and is never sent back to the browser.
 3. **Webhook.** Set `WEBHOOK_SECRET` to a long random string and restart. Open Admin settings in the app and copy the webhook URL. In BulkVS, open **Messaging → Messaging Webhooks**. Under "Message Webhooks", enter a name (e.g. `TextBoss`) in the "Trunk Group" field and paste the URL as the "Message URL", then click **Add**. Click the new webhook in the table to set "Delivery Receipt". Turning it on gives you Delivered/Failed status, but the receipt format is unconfirmed (see below). Set it to false if receipts show up as "not applied" in the webhook log.
 4. **Assign the webhook to each number.** In BulkVS, open **Inbound → DIDs – Manage** and click the number. Make sure SMS and MMS are enabled (BulkVS shows a "Disable" button when they already are), and set "Messaging Webhook" to the one you created.
 5. **Numbers in the app.** Add each BulkVS number in Admin settings, then assign numbers to users.
@@ -73,11 +75,14 @@ Outbound A2P messaging to US carriers also needs a 10DLC brand and campaign regi
 
 ## Importing contacts
 
+Built for importing the full WebPT patient list over and over. Each run updates what changed, such as a new phone number, and counts everything else as unchanged. Because WebPT is the source of truth, a phone number corrected only in TextBoss is overwritten on the next import, so fix data in WebPT.
+
 All three import paths use the same rules:
 - **Header row:** found automatically, even below report title rows. It must have a name column and a phone column.
 - **Phone:** the cell phone is used, then a generic phone, then home, then work.
 - **Matching:** existing contacts are matched by patient ID, or by phone plus name when there's no ID, and updated rather than duplicated.
 - **Never destructive:** imports never delete contacts or clear fields the file doesn't include, such as notes.
+- **Bad values:** an invalid phone, email or date of birth doesn't skip the patient. That one value is left out (an existing good value is kept) and listed under "Problems to fix" with the spreadsheet row, name and patient ID. You can download that list as a CSV.
 
 Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Patient ID` / `Patient ID` / `MRN`, `Notes`, `Opt Out`.
 
@@ -108,12 +113,13 @@ src/routes/importApi.js  API-key contact import (/api/v1/contacts)
 src/messaging.js         Inbound (STOP/START, blocking, auto-replies), outbound, receipts, bulk queue
 src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
-src/bulkvs.js            All BulkVS-specific code (send + webhook parsing)
+src/bulkvs.js            All BulkVS-specific code (send, connection test, webhook parsing)
+src/provider.js          BulkVS credentials (admin settings, then .env)
 src/db.js                SQLite schema, migrations and access helpers
 src/auth.js              Password hashing (scrypt) and cookie sessions
 src/events.js            Server-sent events hub
 public/app.js            Web app shell, inbox and threads
-public/js/               Contacts, canned responses, admin, shared helpers
+public/js/               Contacts, canned responses, admin, theme picker, shared helpers
 data/                    SQLite database and uploaded media (created at runtime)
 ```
 

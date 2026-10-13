@@ -15,5 +15,3 @@ export const config = {
   webhookSecret: env.WEBHOOK_SECRET || '',
   secureCookies: env.INSECURE_COOKIES !== '1',
 };
-
-export const mockMode = !config.bulkvs.username;

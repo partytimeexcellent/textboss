@@ -9,7 +9,7 @@ import {
   isBlocked,
 } from './db.js';
 import { publish } from './events.js';
-import { mockMode } from './config.js';
+import { isMockMode } from './provider.js';
 import { normalizePhone, participantsKey } from './phone.js';
 import { setOptOut } from './contacts.js';
 import * as bulkvs from './bulkvs.js';
@@ -178,7 +178,7 @@ export async function sendOutbound({ conversation, number, user, body, media = [
     announce(conversation, getMessage(id));
   };
 
-  if (mockMode) {
+  if (isMockMode()) {
     setStatus('sent', null, `mock-${id}`);
     setTimeout(() => setStatus('delivered'), 800);
     if (kind !== 'auto' && kind !== 'bulk') {
@@ -233,7 +233,7 @@ export function applyReceipt({ refId, status, detail }) {
 
 // ---------- Bulk messages ----------
 
-const SEND_INTERVAL_MS = mockMode ? 150 : 1000;
+const sendInterval = () => (isMockMode() ? 150 : 1000);
 
 export function serializeBroadcast(id) {
   const b = db.prepare(
@@ -338,7 +338,7 @@ async function runBroadcast(id) {
       }
       db.prepare('UPDATE broadcast_items SET status = ?, error = ? WHERE id = ?').run(status, error, item.id);
       publish(users, 'broadcast', serializeBroadcast(id));
-      await new Promise((r) => setTimeout(r, SEND_INTERVAL_MS));
+      await new Promise((r) => setTimeout(r, sendInterval()));
     }
     db.prepare(`UPDATE broadcasts SET status = CASE status WHEN 'cancelled' THEN 'cancelled' ELSE 'done' END WHERE id = ?`).run(id);
     publish(users, 'broadcast', serializeBroadcast(id));

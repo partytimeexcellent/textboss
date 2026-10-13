@@ -60,6 +60,16 @@ router.post(
       logImport('api', null, result);
       publish(allUserIds(), 'contacts', {});
     }
-    res.json({ dryRun, created: result.created, updated: result.updated, unchanged: result.unchanged, skipped: result.skipped, errors: result.errors });
+    res.json({
+      dryRun,
+      created: result.created,
+      updated: result.updated,
+      unchanged: result.unchanged,
+      skipped: result.skipped,
+      issueCount: result.issueCount,
+      issues: result.issues,
+      changes: result.changes,
+      errors: result.errors,
+    });
   },
 );

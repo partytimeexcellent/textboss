@@ -14,8 +14,8 @@
 //     names as messageSend in any letter case, and every raw body is stored in
 //     the webhook_log table so the parser can be adjusted against real traffic.
 
-import { config } from './config.js';
 import { normalizePhone, toBulkvsRecipient } from './phone.js';
+import { bulkvsCredentials } from './provider.js';
 
 export class BulkvsError extends Error {
   constructor(message, status, body) {
@@ -25,8 +25,31 @@ export class BulkvsError extends Error {
   }
 }
 
+const authHeader = ({ username, password }) =>
+  `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+
+// Checks credentials with GET /accountDetail. Pass creds to test unsaved values.
+export async function testConnection(creds = bulkvsCredentials()) {
+  if (!creds.username || !creds.password) return { ok: false, message: 'Enter both the API username and password' };
+  let res;
+  try {
+    res = await fetch(`${creds.apiBase}/accountDetail`, {
+      headers: { Accept: 'application/json', Authorization: authHeader(creds) },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    return { ok: false, message: `Could not reach BulkVS: ${err.message}` };
+  }
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, message: 'BulkVS rejected these credentials. Use the REST API username and password/token from API → API Credentials.' };
+  }
+  if (!res.ok) return { ok: false, message: `BulkVS returned ${res.status} ${res.statusText}` };
+  return { ok: true, message: 'Connected to BulkVS' };
+}
+
 export async function sendMessage({ from, to, body, mediaUrls = [] }) {
-  const { username, password, apiBase } = config.bulkvs;
+  const creds = bulkvsCredentials();
+  const { apiBase } = creds;
   const payload = {
     From: normalizePhone(from),
     To: to.map(toBulkvsRecipient),
@@ -39,7 +62,7 @@ export async function sendMessage({ from, to, body, mediaUrls = [] }) {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
+      Authorization: authHeader(creds),
     },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(20_000),

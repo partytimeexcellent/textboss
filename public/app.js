@@ -8,6 +8,7 @@ import {
 import { renderContactsSidebar, renderContactsMain, refreshContacts, onBroadcastEvent } from './js/contacts.js';
 import { renderCanned } from './js/canned.js';
 import { renderAdmin } from './js/admin.js';
+import { applyTheme, themePicker } from './js/theme.js';
 
 const app = document.getElementById('app');
 
@@ -22,6 +23,7 @@ async function boot() {
     state.me = me.user;
     state.numbers = me.numbers;
     state.mockMode = me.mockMode;
+    state.theme = applyTheme(me.theme);
   } catch {
     state.me = null;
   }
@@ -97,7 +99,7 @@ function renderShell() {
       { class: 'sidebar' },
       h('div', { class: 'side-top' },
         h('img', { class: 'logo', src: '/icon.svg', alt: '' }),
-        h('div', { class: 'brand' }, 'TextBoss'),
+        h('div', { class: 'brand' }, h('span', { class: 'brand-1' }, 'Text'), h('span', { class: 'brand-2' }, 'Boss')),
         h('button', { class: 'icon-btn', title: 'New message', onclick: () => (location.hash = '#/new') }, icon('compose')),
         h('button', { class: 'icon-btn', title: 'Menu', onclick: (e) => openUserMenu(e.currentTarget) }, icon('menu'))),
       els.tabs,
@@ -155,6 +157,7 @@ function placeholder(text) {
 function openUserMenu(anchor) {
   openMenu(anchor, [
     ['Canned responses', () => (location.hash = '#/canned')],
+    ['Appearance', () => themePicker(state.theme, (t) => (state.theme = t))],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
     'Notification' in window && Notification.permission === 'default' &&
       ['Enable notifications', () => Notification.requestPermission()],
@@ -274,21 +277,28 @@ function renderMessagesSidebar() {
     },
   });
 
-  const archivedBtn = h('button', {
-    class: `btn square${state.showArchived ? ' primary' : ''}`,
-    title: 'Show archived conversations',
-    onclick: () => {
-      state.showArchived = !state.showArchived;
-      archivedBtn.classList.toggle('primary', state.showArchived);
-      loadConversations();
-    },
-  }, icon('archive'));
+  // All / Unread / Flagged / Archived
+  const filters = h('div', { class: 'filter-chips', role: 'tablist', 'aria-label': 'Show' });
+  const drawFilters = () => fill(filters, [['', 'All'], ['unread', 'Unread'], ['flagged', 'Flagged'], ['archived', 'Archived']].map(([v, label]) =>
+    h('button', {
+      type: 'button',
+      role: 'tab',
+      'aria-selected': String(state.convFilter === v),
+      class: state.convFilter === v ? 'on' : '',
+      onclick: () => {
+        state.convFilter = v;
+        drawFilters();
+        loadConversations();
+      },
+    }, label)));
+  drawFilters();
 
   els.list = h('div', { class: 'conv-list' });
-  fill(els.sideBody, 
+  fill(els.sideBody,
     h('div', { class: 'side-head' },
       state.numbers.length > 1 && numberSelect,
-      h('div', { class: 'side-search' }, search, archivedBtn)),
+      search,
+      filters),
     els.list,
   );
   renderList();
@@ -298,7 +308,7 @@ async function loadConversations() {
   const params = new URLSearchParams();
   if (state.filterNumber !== 'all') params.set('numberId', state.filterNumber);
   if (state.search) params.set('q', state.search);
-  if (state.showArchived) params.set('archived', '1');
+  if (state.convFilter) params.set('filter', state.convFilter);
   try {
     state.conversations = await api(`/conversations?${params}`);
   } catch {
@@ -323,7 +333,9 @@ function renderList() {
       h('div', { class: 'empty' },
         !state.numbers.length
           ? state.me.isAdmin ? 'Add a phone number in Admin settings to get started.' : 'No numbers are assigned to you yet. Ask an admin.'
-          : state.search ? 'No matches.' : state.showArchived ? 'No archived conversations.' : 'No conversations yet.'),
+          : state.search ? 'No matches.'
+          : { unread: 'Nothing unread.', flagged: 'No flagged conversations. Flag one from its ⋮ menu.', archived: 'No archived conversations.' }[state.convFilter]
+            ?? 'No conversations yet.'),
     );
     return;
   }
@@ -338,7 +350,7 @@ function renderList() {
       return h(
         'a',
         {
-          class: `conv${r.view === 'thread' && r.id === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}`,
+          class: `conv${r.view === 'thread' && r.id === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}${c.flagged ? ' flagged' : ''}`,
           href: `#/c/${c.id}`,
         },
         conversationAvatar(c.participants),
@@ -347,7 +359,12 @@ function renderList() {
           h('div', { class: 'preview' }, preview),
           multi && h('div', { class: 'via' }, `via ${numberLabel(c.numberId)}`),
         ),
-        h('div', { class: 'meta' }, relTime(c.lastMessageAt), c.unread ? h('span', { class: 'badge' }, c.unread) : null),
+        h('div', { class: 'meta' },
+          h('span', { class: 'meta-top' },
+            c.pinned && h('span', { class: 'mark pin', title: 'Pinned' }, icon('pin')),
+            c.flagged && h('span', { class: 'mark flag', title: 'Flagged' }, icon('flag')),
+            relTime(c.lastMessageAt)),
+          c.unread ? h('span', { class: 'badge' }, c.unread) : null),
       );
     }),
   );
@@ -513,6 +530,8 @@ function renderThreadChrome() {
     conversationAvatar(others),
     h('div', { class: 'title' },
       h('div', { class: 'name' }, conversationName(others),
+        t.pinned && h('span', { class: 'mark pin', title: 'Pinned' }, icon('pin')),
+        t.flagged && h('span', { class: 'mark flag', title: 'Flagged' }, icon('flag')),
         optedOut.length > 0 && h('span', { class: 'tag warn' }, 'Opted out'),
         blocked && h('span', { class: 'tag' }, 'Blocked')),
       h('div', { class: 'sub' },
@@ -542,7 +561,16 @@ function threadMenu(anchor) {
   const single = t.participants.length === 1 ? t.participants[0] : null;
   const blocked = single && state.blocked.has(single);
   const optedOut = single && state.optedOut.has(single);
+  const toggle = (field, path, on, offMsg, onMsg) => async () => {
+    await api(`/conversations/${t.id}/${path}`, { method: 'POST', body: { [field]: !on } });
+    t[field] = !on;
+    toast(on ? offMsg : onMsg);
+    renderThreadChrome();
+    loadConversations();
+  };
   openMenu(anchor, [
+    [t.pinned ? 'Unpin' : 'Pin to top', toggle('pinned', 'pin', t.pinned, 'Unpinned', 'Pinned to the top')],
+    [t.flagged ? 'Remove flag' : 'Flag as important', toggle('flagged', 'flag', t.flagged, 'Flag removed', 'Flagged')],
     ['Mark unread', async () => {
       await api(`/conversations/${t.id}/unread`, { method: 'POST' });
       state.thread = null;
@@ -609,12 +637,16 @@ function renderMessages(forceBottom = false) {
     }
     const gap = prev && (prev.direction !== m.direction || prev.from !== m.from || m.createdAt - prev.createdAt > 5 * 60_000);
 
-    const media = m.media.map((url) => {
+    const media = m.media.map((url, i) => {
       const ext = url.split('?')[0].split('.').pop().toLowerCase();
-      if (['mp4', '3gp', 'mov'].includes(ext)) return h('video', { src: url, controls: true, preload: 'metadata' });
-      if (['mp3', 'm4a', 'amr', 'wav'].includes(ext)) return h('audio', { src: url, controls: true });
-      if (['pdf', 'vcf', 'txt'].includes(ext)) return h('a', { class: 'file', href: url, target: '_blank', rel: 'noopener' }, `📎 ${ext.toUpperCase()} file`);
-      return h('a', { href: url, target: '_blank', rel: 'noopener' }, h('img', { src: url, alt: 'Attachment', loading: 'lazy' }));
+      let view;
+      if (['mp4', '3gp', 'mov'].includes(ext)) view = h('video', { src: url, controls: true, preload: 'metadata' });
+      else if (['mp3', 'm4a', 'amr', 'wav'].includes(ext)) view = h('audio', { src: url, controls: true });
+      else if (['pdf', 'vcf', 'txt'].includes(ext)) view = h('a', { class: 'file', href: url, target: '_blank', rel: 'noopener' }, `📎 ${ext.toUpperCase()} file`);
+      else view = h('a', { href: url, target: '_blank', rel: 'noopener' }, h('img', { src: url, alt: 'Attachment', loading: 'lazy' }));
+      // Goes through the server so BulkVS-hosted files download instead of opening
+      return h('div', { class: 'media-item' }, view,
+        h('a', { class: 'media-download', href: `/api/messages/${m.id}/media/${i}`, download: '', title: 'Download' }, icon('download'), 'Download'));
     });
 
     const status = m.direction === 'out'

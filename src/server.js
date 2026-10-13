@@ -3,13 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { config, mockMode } from './config.js';
+import { config } from './config.js';
+import { isMockMode, bulkvsCredentials } from './provider.js';
 import {
   db,
   getOrCreateConversation,
   userNumberIds,
   userCanAccessNumber,
   allUserIds,
+  userIdsForNumber,
+  getSetting,
+  setSetting,
 } from './db.js';
 import {
   loadUser,
@@ -22,7 +26,7 @@ import {
 } from './auth.js';
 import { subscribe, publish } from './events.js';
 import { normalizePhone, isValidPhone, participantsKey } from './phone.js';
-import { parseWebhook } from './bulkvs.js';
+import { parseWebhook, testConnection } from './bulkvs.js';
 import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcasts } from './messaging.js';
 import { fail } from './http.js';
 import { parseContactFile, upsertContacts, logImport } from './contacts.js';
@@ -97,7 +101,7 @@ app.use('/api', api);
 // First-run setup: create the initial admin when there are no users yet
 api.get('/setup', (_req, res) => {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
-  res.json({ needed: n === 0, mockMode });
+  res.json({ needed: n === 0, mockMode: isMockMode() });
 });
 
 api.post('/setup', (req, res) => {
@@ -146,8 +150,23 @@ api.get('/me', (req, res) => {
       isAdmin: req.user.is_admin,
     },
     numbers,
-    mockMode,
+    mockMode: isMockMode(),
+    theme: JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? 'null'),
   });
+});
+
+// Appearance: { preset, accent, highlight, mode } chosen in the theme picker
+api.put('/me/theme', (req, res) => {
+  const t = req.body ?? {};
+  const color = (v) => (/^#[0-9a-f]{6}$/i.test(v ?? '') ? v : undefined);
+  const theme = {
+    preset: String(t.preset ?? 'custom').slice(0, 30),
+    accent: color(t.accent),
+    highlight: color(t.highlight),
+    mode: ['auto', 'light', 'dark'].includes(t.mode) ? t.mode : 'auto',
+  };
+  db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(theme), req.user.id);
+  res.json(theme);
 });
 
 api.post('/me/password', (req, res) => {
@@ -179,9 +198,19 @@ api.get('/conversations', (req, res) => {
   }
   if (!ids.length) return res.json([]);
 
+  const unreadSql = `(SELECT COUNT(*) FROM messages mu
+      WHERE mu.conversation_id = c.id AND mu.direction = 'in'
+        AND mu.id > COALESCE((SELECT last_read_id FROM reads r WHERE r.user_id = ? AND r.conversation_id = c.id), 0))`;
+  const filter = req.query.archived === '1' ? 'archived' : String(req.query.filter ?? '');
+
   const params = [req.user.id, ...ids];
   let where = `c.number_id IN (${ids.map(() => '?').join(',')}) AND c.archived = ?`;
-  params.push(req.query.archived === '1' ? 1 : 0);
+  params.push(filter === 'archived' ? 1 : 0);
+  if (filter === 'flagged') where += ' AND c.flagged = 1';
+  if (filter === 'unread') {
+    where += ` AND ${unreadSql} > 0`;
+    params.push(req.user.id);
+  }
 
   const q = String(req.query.q ?? '').trim();
   if (q) {
@@ -199,16 +228,13 @@ api.get('/conversations', (req, res) => {
 
   const rows = db
     .prepare(
-      `SELECT c.id, c.number_id, c.participants, c.last_message_at, c.archived,
+      `SELECT c.id, c.number_id, c.participants, c.last_message_at, c.archived, c.pinned, c.flagged,
          lm.body AS last_body, lm.direction AS last_direction, lm.media AS last_media, lm.status AS last_status,
-         (SELECT COUNT(*) FROM messages mu
-            WHERE mu.conversation_id = c.id AND mu.direction = 'in'
-              AND mu.id > COALESCE((SELECT last_read_id FROM reads r WHERE r.user_id = ? AND r.conversation_id = c.id), 0)
-         ) AS unread
+         ${unreadSql} AS unread
        FROM conversations c
        LEFT JOIN messages lm ON lm.id = (SELECT MAX(id) FROM messages WHERE conversation_id = c.id)
        WHERE ${where}
-       ORDER BY c.last_message_at DESC
+       ORDER BY c.pinned DESC, c.last_message_at DESC
        LIMIT 200`,
     )
     .all(...params);
@@ -220,6 +246,8 @@ api.get('/conversations', (req, res) => {
       participants: r.participants.split(','),
       lastMessageAt: r.last_message_at,
       archived: !!r.archived,
+      pinned: !!r.pinned,
+      flagged: !!r.flagged,
       unread: r.unread,
       last: r.last_body == null
         ? null
@@ -250,7 +278,58 @@ api.post('/conversations', (req, res) => {
 
 api.get('/conversations/:id', (req, res) => {
   const c = loadConversation(req);
-  res.json({ id: c.id, numberId: c.number_id, participants: c.participants.split(','), archived: !!c.archived });
+  res.json({
+    id: c.id,
+    numberId: c.number_id,
+    participants: c.participants.split(','),
+    archived: !!c.archived,
+    pinned: !!c.pinned,
+    flagged: !!c.flagged,
+  });
+});
+
+// Pin to the top of the list, or flag as important. Shared by the whole team.
+for (const field of ['pinned', 'flagged']) {
+  api.post(`/conversations/:id/${field === 'pinned' ? 'pin' : 'flag'}`, (req, res) => {
+    const c = loadConversation(req);
+    const on = !!req.body?.[field];
+    db.prepare(`UPDATE conversations SET ${field} = ? WHERE id = ?`).run(on ? 1 : 0, c.id);
+    publish(userIdsForNumber(c.number_id), 'read', { conversationId: c.id });
+    res.json({ ok: true, [field]: on });
+  });
+}
+
+// Downloads an attachment. External (BulkVS-hosted) files are fetched by the
+// server so the browser gets a real download instead of opening a new tab.
+api.get('/messages/:id/media/:index', async (req, res) => {
+  const msg = db.prepare('SELECT m.id, m.media, c.number_id FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ?')
+    .get(Number(req.params.id));
+  if (!msg || !userCanAccessNumber(req.user, msg.number_id)) fail(404, 'Not found');
+  const url = JSON.parse(msg.media)[Number(req.params.index)];
+  if (!url) fail(404, 'Not found');
+
+  const base = path.basename(new URL(url).pathname) || `attachment-${msg.id}`;
+  const filename = base.replace(/[^\w.-]+/g, '_').slice(0, 100);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const localPrefix = `${config.publicUrl}/media/`;
+  if (url.startsWith(localPrefix)) {
+    const file = path.join(mediaDir, path.basename(url.slice(localPrefix.length)));
+    if (!fs.existsSync(file)) fail(404, 'File no longer exists');
+    return res.sendFile(file);
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(url, { signal: AbortSignal.timeout(30_000), redirect: 'follow' });
+  } catch (err) {
+    fail(502, `Could not fetch the attachment: ${err.message}`);
+  }
+  if (!upstream.ok) fail(502, `The attachment host returned ${upstream.status}`);
+  const size = Number(upstream.headers.get('content-length') ?? 0);
+  if (size > 50 * 1024 * 1024) fail(413, 'Attachment is too large to download here');
+  res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'application/octet-stream');
+  res.send(Buffer.from(await upstream.arrayBuffer()));
 });
 
 api.get('/conversations/:id/messages', (req, res) => {
@@ -441,6 +520,50 @@ admin.delete('/numbers/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ----- Provider (BulkVS) credentials -----
+
+// The password is never sent back; only whether one is saved and its last 4 characters
+function providerStatus() {
+  const creds = bulkvsCredentials();
+  return {
+    provider: 'bulkvs',
+    source: creds.source, // 'admin' | 'env' | null
+    username: creds.username ?? '',
+    passwordSet: !!creds.password,
+    passwordHint: creds.password ? `…${creds.password.slice(-4)}` : '',
+    mockMode: isMockMode(),
+  };
+}
+
+admin.get('/provider', (_req, res) => res.json(providerStatus()));
+
+admin.put('/provider', (req, res) => {
+  const username = String(req.body?.username ?? '').trim();
+  const password = String(req.body?.password ?? '').trim();
+  if (!username) {
+    // Clearing the username falls back to .env (or mock mode)
+    setSetting('bulkvs.username', null);
+    setSetting('bulkvs.password', null);
+  } else {
+    setSetting('bulkvs.username', username);
+    // Blank password = keep the saved one
+    if (password) setSetting('bulkvs.password', password);
+    else if (!getSetting('bulkvs.password')) fail(400, 'Enter the API password/token');
+  }
+  res.json(providerStatus());
+});
+
+admin.post('/provider/test', async (req, res) => {
+  const current = bulkvsCredentials();
+  const username = String(req.body?.username ?? '').trim();
+  const password = String(req.body?.password ?? '').trim();
+  // Test what's typed in the form, falling back to the saved password
+  const creds = username
+    ? { ...current, username, password: password || (username === current.username ? current.password : '') }
+    : current;
+  res.json(await testConnection(creds));
+});
+
 admin.get('/webhook-log', (_req, res) => {
   res.json({
     url: config.webhookSecret ? `${config.publicUrl}/webhook/bulkvs/${config.webhookSecret}` : null,
@@ -528,6 +651,6 @@ startWatcher();
 
 app.listen(config.port, () => {
   console.log(`TextBoss listening on http://localhost:${config.port}`);
-  console.log(mockMode ? 'Mock mode: no BulkVS credentials set, messages are not really sent.' : 'BulkVS mode.');
+  console.log(isMockMode() ? 'Mock mode: no BulkVS credentials set, messages are not really sent.' : 'BulkVS mode.');
   if (!config.webhookSecret) console.log('WEBHOOK_SECRET is not set, so inbound messages are disabled.');
 });

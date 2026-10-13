@@ -193,9 +193,33 @@ db.exec(`
   );
 `);
 
-// v1 messages had no kind; 'auto' = keyword/away/STOP reply, 'bulk' = broadcast
-if (!db.prepare('PRAGMA table_info(messages)').all().some((c) => c.name === 'kind')) {
-  db.exec('ALTER TABLE messages ADD COLUMN kind TEXT');
+// Columns added after the first release
+function addColumn(table, column, definition) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+addColumn('messages', 'kind', 'TEXT'); // 'auto' = keyword/away reply, 'bulk' = broadcast
+addColumn('conversations', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('conversations', 'flagged', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('users', 'theme', 'TEXT');
+addColumn('import_log', 'issues', 'INTEGER NOT NULL DEFAULT 0');
+
+db.exec(`
+  -- Admin-editable settings (e.g. BulkVS credentials); these override .env
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
+export function getSetting(key) {
+  return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
+}
+
+export function setSetting(key, value) {
+  if (value == null || value === '') db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  else db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(key, value);
 }
 
 if (contactCols.includes('name') && !contactCols.includes('first_name')) {
