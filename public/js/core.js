@@ -30,6 +30,8 @@ const ICONS = {
   archive: svg('<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/>'),
   canned: svg('<path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><path d="m16 16 2 2 4-4"/>'),
   plus: svg('<path d="M12 5v14"/><path d="M5 12h14"/>'),
+  split: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><path d="M15.5 12h3"/><path d="M17 10.5v3"/>'),
+  close: svg('<path d="M6 6l12 12"/><path d="M18 6 6 18"/>'),
   ban: svg('<circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/>'),
   warning: svg('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>'),
   newchat: svg('<path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5Z"/><path d="M12.5 8v7"/><path d="M9 11.5h7"/>', 2.2),
@@ -118,7 +120,10 @@ export function route() {
   const [hash, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   const [view, id] = hash.split('/');
   if (view === 'contacts' && id === 'new') return { view: 'contact', id: null, tab: 'contacts', query: new URLSearchParams(query) };
-  if (view === 'c' && id) return { view: 'thread', id: Number(id), tab: 'messages' };
+  if (view === 'c' && id) {
+    const ids = [...new Set(id.split('+').map(Number).filter(Boolean))].slice(0, 3);
+    if (ids.length) return { view: 'thread', id: ids[0], ids, tab: 'messages' };
+  }
   if (view === 'new') return { view: 'new', tab: 'messages' };
   if (view === 'admin') return { view: 'admin', tab: 'messages', section: id || 'bulkvs' };
   if (view === 'canned') return { view: 'canned', tab: 'messages' };

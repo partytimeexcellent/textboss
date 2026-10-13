@@ -651,3 +651,17 @@ a.btn.primary { color: var(--accent-text); }
 .logo-row input[type=range] { flex: 1; min-width: 100px; accent-color: var(--accent); }
 .check.small { gap: 4px; font-size: 13px; }
 @media (max-width: 520px) { .logo-custom { grid-template-columns: 1fr; } }
+
+/* ---------- Side-by-side conversation panes (desktop) ---------- */
+.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pane-hidden { display: none !important; }
+.panes.multi .pane { border-left: 1px solid var(--border); }
+.panes.multi { margin-left: -1px; }
+/* The pane you're working in: accent line under its header; others slightly recessed */
+.panes.multi .pane.focused .thread-head { box-shadow: inset 0 -2px 0 var(--accent); }
+.panes.multi .pane:not(.focused) .thread-head { background: var(--bg-side); }
+.panes.multi .thread-head .avatar { width: 34px; height: 34px; font-size: 13px; }
+.conv.active.focused { box-shadow: inset 3px 0 0 var(--accent); }
+.quick.split svg { width: 16px; height: 16px; }
+@media (max-width: 1099px) { .quick.split { display: none; } }

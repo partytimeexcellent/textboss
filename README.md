@@ -3,6 +3,7 @@
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
 - **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, delivery status, and who on the team sent each message. Pin and flag from the list (hover a row) or the conversation header; the ⋮ menu also has mark unread, archive, opt out/in, block sender, delete history. Pins and flags are shared by the team.
+- **Side-by-side conversations (desktop):** open up to three conversations at once with Cmd/Ctrl-click or the Open beside button on a list row. A normal click replaces the active pane, and each pane has its own message box, menu and close button. Narrower windows show as many as fit; phones show one.
 - **Contacts:** first/last name, nickname (shown as "(Bobby) Robert Smith"), mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
 - **Opt-out:** applies to the phone number. Texting an opted-out number brings up a warning you must confirm by typing SEND, and the server enforces it. Replies of STOP, UNSUBSCRIBE, etc. opt out automatically, and START opts back in.
 - **Blocked senders:** their texts are dropped. Manage them in Admin settings.

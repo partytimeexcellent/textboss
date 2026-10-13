@@ -144,10 +144,14 @@ function renderRoute() {
   renderSidebar(r.tab);
   els.layout.classList.toggle('has-thread', !['list', 'contacts'].includes(r.view));
   if (r.tab === 'messages') renderList();
-  if (r.view !== 'thread') state.thread = null;
+  if (r.view !== 'thread') {
+    state.thread = null;
+    panes.clear();
+    els.panes = null;
+  }
 
   switch (r.view) {
-    case 'thread': return openThread(r.id);
+    case 'thread': return renderPanes(r.ids);
     case 'new': return renderNewMessage();
     case 'admin': return state.me.isAdmin ? renderAdmin() : placeholder('Admins only.');
     case 'canned': return renderCanned();
@@ -207,7 +211,7 @@ function connectEvents() {
   es.addEventListener('contacts', async () => {
     await Promise.all([loadIndex(), loadLists()]);
     renderList();
-    if (state.thread) renderThreadChrome();
+    renderThreadChrome();
     if (route().tab === 'contacts') refreshContacts();
   });
   es.addEventListener('canned', () => loadCanned());
@@ -231,15 +235,15 @@ function scheduleListReload() {
 
 function onMessageEvent(msg) {
   scheduleListReload();
-  const t = state.thread;
-  if (t && t.id === msg.conversationId) {
-    const i = t.messages.findIndex((m) => m.id === msg.id);
-    if (i >= 0) t.messages[i] = msg;
-    else t.messages.push(msg);
-    renderMessages();
-    if (msg.direction === 'in' && document.visibilityState === 'visible') markRead(t.id);
+  const p = panes.get(msg.conversationId);
+  if (p?.conv) {
+    const i = p.messages.findIndex((m) => m.id === msg.id);
+    if (i >= 0) p.messages[i] = msg;
+    else p.messages.push(msg);
+    renderPaneMessages(p);
+    if (msg.direction === 'in' && p.visible && document.visibilityState === 'visible') markRead(p.id);
   }
-  if (msg.direction === 'in' && msg.status === 'received' && (document.visibilityState !== 'visible' || t?.id !== msg.conversationId)) {
+  if (msg.direction === 'in' && msg.status === 'received' && (document.visibilityState !== 'visible' || !p?.visible)) {
     notify(msg);
   }
 }
@@ -260,7 +264,8 @@ function notify(msg) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.thread) markRead(state.thread.id);
+  if (document.visibilityState !== 'visible') return;
+  for (const p of panes.values()) if (p.visible) markRead(p.id);
 });
 
 // ---------- Messages sidebar ----------
@@ -362,6 +367,7 @@ function renderList() {
   }
 
   const multi = state.numbers.length > 1 && state.filterNumber === 'all';
+  const open = r.view === 'thread' ? r.ids : [];
   fill(els.list, 
     ...state.conversations.map((c) => {
       let preview = c.last ? (c.last.body || (c.last.hasMedia ? 'Attachment' : '')) : 'No messages yet';
@@ -372,8 +378,12 @@ function renderList() {
       return h(
         'div',
         {
-          class: `conv${r.view === 'thread' && r.id === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}${c.flagged ? ' flagged' : ''}`,
-          onclick: (e) => !e.target.closest('a, button') && (location.hash = `#/c/${c.id}`),
+          class: `conv${open.includes(c.id) ? ' active' : ''}${open.length > 1 && c.id === state.focusedId ? ' focused' : ''}${c.unread ? ' unread' : ''}${c.flagged ? ' flagged' : ''}`,
+          onclick: (e) => {
+            if (e.target.closest('button')) return;
+            e.preventDefault();
+            openConversation(c.id, { beside: e.metaKey || e.ctrlKey });
+          },
         },
         h('a', { class: 'conv-link', href: `#/c/${c.id}` },
           conversationAvatar(c.participants),
@@ -385,6 +395,16 @@ function renderList() {
         h('div', { class: 'meta' },
           h('span', { class: 'meta-time' }, relTime(c.lastMessageAt)),
           h('div', { class: 'meta-bottom' },
+            h('button', {
+              type: 'button',
+              class: 'quick split',
+              title: 'Open beside (or Cmd/Ctrl-click)',
+              'aria-label': 'Open beside the current conversation',
+              onclick: (e) => {
+                e.stopPropagation();
+                openConversation(c.id, { beside: true });
+              },
+            }, icon('split')),
             quickToggle(c, 'pinned'),
             quickToggle(c, 'flagged'),
             c.unread ? h('span', { class: 'badge' }, c.unread) : null)),
@@ -404,7 +424,7 @@ async function setToggle(conversation, field) {
   const spec = TOGGLES[field];
   const next = !conversation[field];
   // Update everywhere right away, then confirm with the server
-  for (const c of [conversation, state.thread?.id === conversation.id ? state.thread : null, ...state.conversations.filter((x) => x.id === conversation.id)]) {
+  for (const c of [conversation, panes.get(conversation.id)?.conv, ...state.conversations.filter((x) => x.id === conversation.id)]) {
     if (c) c[field] = next;
   }
   renderList();
@@ -534,67 +554,173 @@ function renderNewMessage() {
   autoFocus(input);
 }
 
-// ----- Thread -----
+// ----- Conversation panes -----
+//
+// On desktop up to three conversations can be open side by side. The URL holds
+// them left to right (#/c/12+15+18). Clicking a conversation replaces the
+// focused pane; Cmd/Ctrl-click or "Open beside" adds a pane. Narrow windows
+// show only as many as fit, always including the focused one.
 
-async function openThread(id) {
-  if (state.thread?.id !== id) {
-    fill(els.main, h('div', { class: 'placeholder' }, 'Loading…'));
-    try {
-      const [conv, messages] = await Promise.all([api(`/conversations/${id}`), api(`/conversations/${id}/messages`)]);
-      if (route().id !== id) return;
-      state.thread = { ...conv, messages, hasMore: messages.length >= 50 };
-    } catch (err) {
-      fill(els.main, h('div', { class: 'placeholder' }, err.message));
-      return;
+const MAX_PANES = 3;
+const panes = new Map(); // conversation id -> pane
+
+const threadHash = (ids) => (ids.length ? `#/c/${ids.join('+')}` : '#/');
+const openIds = () => (route().view === 'thread' ? route().ids : []);
+
+// How many panes fit next to the sidebar
+function paneCapacity() {
+  const w = window.innerWidth;
+  return w >= 1500 ? 3 : w >= 1100 ? 2 : 1;
+}
+
+function openConversation(id, { beside = false } = {}) {
+  let ids = openIds();
+  if (ids.includes(id)) {
+    focusPane(id);
+    return;
+  }
+  if (beside && ids.length) {
+    if (ids.length >= MAX_PANES) {
+      toast('Up to 3 conversations side by side; replaced the active one');
+      ids = ids.map((x) => (x === state.focusedId ? id : x));
+    } else {
+      ids = [...ids, id];
+    }
+  } else if (ids.includes(state.focusedId)) {
+    ids = ids.map((x) => (x === state.focusedId ? id : x));
+  } else {
+    ids = [id];
+  }
+  state.focusedId = id;
+  location.hash = threadHash(ids);
+}
+
+function closePane(id) {
+  const ids = openIds().filter((x) => x !== id);
+  if (state.focusedId === id) state.focusedId = ids.at(-1) ?? null;
+  location.hash = threadHash(ids);
+}
+
+function focusPane(id) {
+  if (state.focusedId === id) return;
+  state.focusedId = id;
+  layoutPanes();
+  renderList();
+}
+
+// Builds or reuses panes for the conversations in the URL
+function renderPanes(ids) {
+  if (!ids.includes(state.focusedId)) state.focusedId = ids.at(-1);
+  if (!els.panes?.isConnected) {
+    els.panes = h('div', { class: 'panes' });
+    fill(els.main, els.panes);
+  }
+  for (const [id, p] of panes) {
+    if (!ids.includes(id)) {
+      p.el.remove();
+      panes.delete(id);
     }
   }
-  const t = state.thread;
+  for (const id of ids) {
+    let p = panes.get(id);
+    if (!p) {
+      p = createPane(id);
+      panes.set(id, p);
+    }
+    els.panes.append(p.el); // keeps URL order
+  }
+  layoutPanes();
+  state.thread = panes.get(state.focusedId) ?? null;
+}
 
-  els.threadHead = h('div', { class: 'thread-head' });
-  els.optoutBanner = h('div', { class: 'optout-banner', hidden: true });
-  els.messages = h('div', { class: 'messages' });
-  els.messages.addEventListener('scroll', () => {
-    if (els.messages.scrollTop < 80) loadOlder();
+// Which panes are visible, and which one is focused
+function layoutPanes() {
+  if (!els.panes?.isConnected) return;
+  const ids = openIds();
+  const cap = paneCapacity();
+  // Show the focused pane plus its nearest neighbours that fit
+  const fi = Math.max(0, ids.indexOf(state.focusedId));
+  let start = Math.min(Math.max(0, fi - (cap - 1)), Math.max(0, ids.length - cap));
+  if (fi < start) start = fi;
+  const visible = new Set(ids.slice(start, start + cap));
+  els.panes.classList.toggle('multi', visible.size > 1);
+  els.panes.style.gridTemplateColumns = `repeat(${visible.size}, minmax(0, 1fr))`;
+  for (const [id, p] of panes) {
+    p.visible = visible.has(id);
+    p.el.classList.toggle('pane-hidden', !p.visible);
+    p.el.classList.toggle('focused', id === state.focusedId);
+    renderPaneChrome(p);
+  }
+  state.thread = panes.get(state.focusedId) ?? null;
+}
+
+window.addEventListener('resize', () => {
+  clearTimeout(layoutPanes.t);
+  layoutPanes.t = setTimeout(layoutPanes, 100);
+});
+
+function createPane(id) {
+  const p = { id, conv: null, messages: [], hasMore: false, loading: false, visible: true };
+  p.head = h('div', { class: 'thread-head' });
+  p.banner = h('div', { class: 'optout-banner', hidden: true });
+  p.list = h('div', { class: 'messages' }, h('div', { class: 'placeholder' }, 'Loading…'));
+  p.list.addEventListener('scroll', () => {
+    if (p.list.scrollTop < 80) loadOlder(p);
   });
 
   // Merge fields in canned responses use the first contact on a 1:1 thread
   const mergeContact = () => {
-    if (t.participants.length !== 1) return null;
-    const [firstName = '', lastName = '', nickname = ''] = state.people[t.participants[0]] ?? [];
+    if (!p.conv || p.conv.participants.length !== 1) return null;
+    const [firstName = '', lastName = '', nickname = ''] = state.people[p.conv.participants[0]] ?? [];
     return { firstName, lastName, nickname };
   };
+  p.composer = buildComposer(async (body, media) => {
+    const msg = await sendWithGuard(p.id, body, media);
+    if (msg === false) return false;
+    if (!p.messages.some((m) => m.id === msg.id)) p.messages.push(msg);
+    renderPaneMessages(p, true);
+  }, { mergeContact });
 
-  fill(els.main, 
-    els.threadHead,
-    els.messages,
-    els.optoutBanner,
-    buildComposer(async (body, media) => {
-      const msg = await sendWithGuard(t.id, body, media);
-      if (msg === false) return false;
-      if (!t.messages.some((m) => m.id === msg.id)) t.messages.push(msg);
-      renderMessages(true);
-    }, { mergeContact }),
-  );
-  renderThreadChrome();
-  renderMessages(true);
-  markRead(t.id);
-  autoFocus(els.main.querySelector('textarea'));
+  p.el = h('section', {
+    class: 'pane',
+    'aria-label': 'Conversation',
+    onmousedown: () => focusPane(id),
+    onfocusin: () => focusPane(id),
+  }, p.head, p.list, p.banner, p.composer);
+
+  (async () => {
+    try {
+      const [conv, messages] = await Promise.all([api(`/conversations/${id}`), api(`/conversations/${id}/messages`)]);
+      p.conv = conv;
+      p.messages = messages;
+      p.hasMore = messages.length >= 50;
+    } catch (err) {
+      fill(p.list, h('div', { class: 'placeholder' }, err.message));
+      return;
+    }
+    renderPaneChrome(p);
+    renderPaneMessages(p, true);
+    if (p.visible) markRead(id);
+    if (id === state.focusedId) autoFocus(p.composer.textarea);
+  })();
+  return p;
 }
 
-function renderThreadChrome() {
-  const t = state.thread;
-  if (!t || !els.threadHead?.isConnected) return;
+function renderPaneChrome(p) {
+  const t = p.conv;
+  if (!t) return;
   const others = t.participants;
   const single = others.length === 1 ? others[0] : null;
-  const optedOut = others.filter((p) => state.optedOut.has(p));
+  const optedOut = others.filter((x) => state.optedOut.has(x));
   const blocked = single && state.blocked.has(single);
+  const multi = els.panes?.classList.contains('multi');
   // Phone (when a contact name is shown) and, with several numbers, which one this is on
   const subline = [
     single && state.names[single] && formatPhone(single),
     state.numbers.length > 1 && `via ${numberLabel(t.numberId)}`,
   ].filter(Boolean).join(' · ');
 
-  fill(els.threadHead,
+  fill(p.head,
     backButton(),
     conversationAvatar(others),
     h('div', { class: 'title' },
@@ -613,12 +739,17 @@ function renderThreadChrome() {
       title: state.names[single] ? 'View contact' : 'Add contact',
       onclick: () => openContactFor(single),
     }, icon('user')),
-    h('button', { class: 'icon-btn', title: 'More', onclick: (e) => threadMenu(e.currentTarget) }, icon('menu')),
+    h('button', { class: 'icon-btn', title: 'More', onclick: (e) => paneMenu(p, e.currentTarget) }, icon('menu')),
+    multi && h('button', { class: 'icon-btn pane-close', title: 'Close this pane', onclick: () => closePane(p.id) }, icon('close')),
   );
 
-  els.optoutBanner.hidden = !optedOut.length;
-  fill(els.optoutBanner, icon('warning'),
+  p.banner.hidden = !optedOut.length;
+  fill(p.banner, icon('warning'),
     h('span', {}, `${optedOut.map(nameFor).join(', ')} opted out of texts. Sending will ask you to confirm.`));
+}
+
+function renderThreadChrome() {
+  for (const p of panes.values()) renderPaneChrome(p);
 }
 
 async function openContactFor(phone) {
@@ -627,8 +758,8 @@ async function openContactFor(phone) {
   location.hash = match ? `#/contacts/${match.id}` : `#/contacts/new?phone=${phone}`;
 }
 
-function threadMenu(anchor) {
-  const t = state.thread;
+function paneMenu(p, anchor) {
+  const t = p.conv;
   const single = t.participants.length === 1 ? t.participants[0] : null;
   const blocked = single && state.blocked.has(single);
   const optedOut = single && state.optedOut.has(single);
@@ -637,14 +768,12 @@ function threadMenu(anchor) {
     [t.flagged ? 'Remove flag' : 'Flag as important', () => setToggle(t, 'flagged')],
     ['Mark unread', async () => {
       await api(`/conversations/${t.id}/unread`, { method: 'POST' });
-      state.thread = null;
-      location.hash = '#/';
+      closePane(t.id);
     }],
     [t.archived ? 'Move to inbox' : 'Archive', async () => {
       await api(`/conversations/${t.id}/archive`, { method: 'POST', body: { archived: !t.archived } });
       toast(t.archived ? 'Moved back to inbox' : 'Archived');
-      state.thread = null;
-      location.hash = '#/';
+      closePane(t.id);
       loadConversations();
     }],
     single && [optedOut ? 'Opt back in' : 'Mark opted out', async () => {
@@ -660,39 +789,36 @@ function threadMenu(anchor) {
       if (!(await confirmDialog('Delete this conversation?', 'Every message in this conversation will be permanently deleted for all users. This cannot be undone.', 'Delete', { danger: true }))) return;
       await api(`/conversations/${t.id}`, { method: 'DELETE' });
       toast('Conversation deleted');
-      state.thread = null;
-      location.hash = '#/';
+      closePane(t.id);
       loadConversations();
     }, 'danger'],
   ]);
 }
 
-async function loadOlder() {
-  const t = state.thread;
-  if (!t?.hasMore || t.loading || !t.messages.length) return;
-  t.loading = true;
-  const older = await api(`/conversations/${t.id}/messages?before=${t.messages[0].id}`).catch(() => []);
-  t.loading = false;
-  t.hasMore = older.length >= 50;
+async function loadOlder(p) {
+  if (!p.hasMore || p.loading || !p.messages.length) return;
+  p.loading = true;
+  const older = await api(`/conversations/${p.id}/messages?before=${p.messages[0].id}`).catch(() => []);
+  p.loading = false;
+  p.hasMore = older.length >= 50;
   if (!older.length) return;
-  const prevHeight = els.messages.scrollHeight;
-  t.messages.unshift(...older);
-  renderMessages();
-  els.messages.scrollTop = els.messages.scrollHeight - prevHeight;
+  const prevHeight = p.list.scrollHeight;
+  p.messages.unshift(...older);
+  renderPaneMessages(p);
+  p.list.scrollTop = p.list.scrollHeight - prevHeight;
 }
 
-function renderMessages(forceBottom = false) {
-  const t = state.thread;
-  const box = els.messages;
-  if (!t || !box?.isConnected) return;
+function renderPaneMessages(p, forceBottom = false) {
+  const box = p.list;
+  if (!p.conv || !box.isConnected) return;
   const atBottom = forceBottom || box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   const prevTop = box.scrollTop;
-  const group = t.participants.length > 1;
+  const group = p.conv.participants.length > 1;
 
   const nodes = [];
   let lastDay = '';
   let prev = null;
-  for (const m of t.messages) {
+  for (const m of p.messages) {
     const day = new Date(m.createdAt).toDateString();
     if (day !== lastDay) {
       nodes.push(h('div', { class: 'day' }, new Date(m.createdAt).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })));
@@ -718,7 +844,7 @@ function renderMessages(forceBottom = false) {
     const status = m.direction === 'out'
       ? { sending: 'Sending…', sent: 'Sent', delivered: 'Delivered', failed: 'Failed' }[m.status] ?? m.status
       : '';
-    const showInfo = m.direction === 'out' && (m === t.messages.at(-1) || m.status === 'failed' || m.status === 'sending' || m.kind);
+    const showInfo = m.direction === 'out' && (m === p.messages.at(-1) || m.status === 'failed' || m.status === 'sending' || m.kind);
 
     nodes.push(
       h('div', { class: `msg ${m.direction}${gap ? ' gap' : ''}${m.status === 'failed' ? ' failed' : ''}${m.kind === 'auto' ? ' auto' : ''}`, title: new Date(m.createdAt).toLocaleString() },
@@ -752,10 +878,10 @@ function linkify(text) {
   return parts;
 }
 
-let readTimer;
+const readTimers = new Map();
 function markRead(id) {
-  clearTimeout(readTimer);
-  readTimer = setTimeout(() => api(`/conversations/${id}/read`, { method: 'POST' }).catch(() => {}), 300);
+  clearTimeout(readTimers.get(id));
+  readTimers.set(id, setTimeout(() => api(`/conversations/${id}/read`, { method: 'POST' }).catch(() => {}), 300));
 }
 
 boot();
