@@ -37,6 +37,20 @@ import { backupStream, stageRestore } from './backup.js';
 import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, pushToUsers, unreadTotal } from './push.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+// Changes whenever a deploy changes the web app, so open windows can offer a reload
+const appVersion = (() => {
+  const hash = crypto.createHash('sha256');
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const file = path.join(dir, name);
+      if (fs.statSync(file).isDirectory()) walk(file);
+      else hash.update(name).update(fs.readFileSync(file));
+    }
+  };
+  walk(path.join(root, 'public'));
+  return hash.digest('hex').slice(0, 12);
+})();
 const mediaDir = path.join(config.dataDir, 'media');
 const iconDir = path.join(config.dataDir, 'icons');
 fs.mkdirSync(mediaDir, { recursive: true });
@@ -117,6 +131,11 @@ const api = express.Router();
 app.use('/api', api);
 
 // First-run setup: create the initial admin when there are no users yet
+api.get('/version', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ version: appVersion });
+});
+
 api.get('/setup', (_req, res) => {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   res.json({ needed: n === 0, mockMode: isMockMode() });

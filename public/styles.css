@@ -665,3 +665,9 @@ a.btn.primary { color: var(--accent-text); }
 .conv.active.focused { box-shadow: inset 3px 0 0 var(--accent); }
 .quick.split svg { width: 16px; height: 16px; }
 @media (max-width: 1099px) { .quick.split { display: none; } }
+.update-bar {
+  position: fixed; z-index: 40; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 12px;
+  background: var(--bg); border: 1px solid var(--border-strong); box-shadow: var(--shadow); font-weight: 600;
+  max-width: calc(100vw - 24px);
+}

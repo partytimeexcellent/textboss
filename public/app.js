@@ -200,6 +200,23 @@ function changePasswordDialog() {
   );
 }
 
+// ---------- New version available ----------
+
+let loadedVersion = null;
+async function checkForUpdate() {
+  const { version } = await api('/version').catch(() => ({}));
+  if (!version) return;
+  loadedVersion ??= version;
+  if (version === loadedVersion || document.querySelector('.update-bar')) return;
+  document.body.append(h('div', { class: 'update-bar', role: 'status' },
+    h('span', {}, 'TextBoss was updated.'),
+    h('button', { class: 'btn primary', onclick: () => location.reload() }, 'Reload'),
+    h('button', { class: 'icon-btn', title: 'Later', onclick: (e) => e.currentTarget.parentNode.remove() }, icon('close'))));
+}
+checkForUpdate();
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && checkForUpdate());
+setInterval(checkForUpdate, 15 * 60_000);
+
 // ---------- Live updates ----------
 
 function connectEvents() {
@@ -224,7 +241,10 @@ function connectEvents() {
     loadConversations();
   });
   es.addEventListener('broadcast', (e) => onBroadcastEvent(JSON.parse(e.data)));
-  es.addEventListener('open', () => scheduleListReload());
+  es.addEventListener('open', () => {
+    scheduleListReload();
+    checkForUpdate();
+  });
 }
 
 let listReloadTimer;
