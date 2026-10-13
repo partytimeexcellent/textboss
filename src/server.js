@@ -339,7 +339,7 @@ api.get('/me', (req, res) => {
   });
 });
 
-// Appearance: { preset, accent, highlight, mode } chosen in the theme picker
+// Appearance: { preset, accent, highlight, mode, logo, labelOwn } chosen in the theme picker
 api.put('/me/theme', (req, res) => {
   const t = req.body ?? {};
   const color = (v) => (/^#[0-9a-f]{6}$/i.test(v ?? '') ? v : undefined);
@@ -362,6 +362,8 @@ api.put('/me/theme', (req, res) => {
         }
       : current.logo,
     iconId: /^[0-9a-f]{16}$/.test(t.iconId ?? '') ? t.iconId : current.iconId,
+    // Name tag on your own sent messages (other staff are always tagged)
+    labelOwn: typeof t.labelOwn === 'boolean' ? t.labelOwn : !!current.labelOwn,
   };
   db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(theme), req.user.id);
   res.json(theme);

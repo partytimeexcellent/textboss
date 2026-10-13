@@ -296,7 +296,10 @@ function placeholder(text) {
 function openUserMenu(anchor) {
   openMenu(anchor, [
     ['Canned responses', () => (location.hash = '#/canned')],
-    ['Appearance', () => themePicker(state.theme, (t) => (state.theme = t))],
+    ['Appearance', () => themePicker(state.theme, (t) => {
+      state.theme = t;
+      for (const p of panes.values()) renderPaneMessages(p);
+    })],
     ['Security', () => (location.hash = '#/security')],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
     ['Notifications', notificationsDialog],
@@ -970,7 +973,12 @@ function renderPaneMessages(p, forceBottom = false) {
       lastDay = day;
       prev = null;
     }
-    const gap = prev && (prev.direction !== m.direction || prev.from !== m.from || m.createdAt - prev.createdAt > 5 * 60_000);
+    const gap = prev && (prev.direction !== m.direction || prev.from !== m.from || prev.sentBy !== m.sentBy || m.createdAt - prev.createdAt > 5 * 60_000);
+    // Outgoing texts from other staff (or auto-replies) are tagged and shaded;
+    // your own only get your name if you turned that on in Appearance
+    const other = m.direction === 'out' && m.kind !== 'auto' && m.sentById != null && m.sentById !== state.me.id;
+    const tagged = m.direction === 'out' && m.sentBy && (other || m.kind === 'auto' || state.theme?.labelOwn);
+    const runStart = !prev || prev.direction !== 'out' || prev.sentBy !== m.sentBy || gap;
 
     const media = m.media.map((url, i) => {
       const ext = url.split('?')[0].split('.').pop().toLowerCase();
@@ -992,12 +1000,12 @@ function renderPaneMessages(p, forceBottom = false) {
     const showInfo = m.direction === 'out' && (m === p.messages.at(-1) || m.status === 'failed' || m.status === 'sending' || m.kind);
 
     nodes.push(
-      h('div', { class: `msg ${m.direction}${gap ? ' gap' : ''}${m.status === 'failed' ? ' failed' : ''}${m.kind === 'auto' ? ' auto' : ''}`, title: new Date(m.createdAt).toLocaleString() },
+      h('div', { class: `msg ${m.direction}${gap ? ' gap' : ''}${other ? ' other' : ''}${m.status === 'failed' ? ' failed' : ''}${m.kind === 'auto' ? ' auto' : ''}`, title: `${m.sentBy ? `${m.sentBy} · ` : ''}${new Date(m.createdAt).toLocaleString()}` },
         group && m.direction === 'in' && (!prev || prev.from !== m.from || prev.direction !== 'in') && h('div', { class: 'sender' }, nameFor(m.from)),
+        tagged && runStart && h('div', { class: 'sender' }, m.sentBy),
         media.some(Boolean) && h('div', { class: 'media' }, media),
         m.body && h('div', { class: 'bubble' }, linkify(m.body)),
         showInfo && h('div', { class: 'info' },
-          m.sentBy ? `${m.sentBy} · ` : '',
           m.kind === 'bulk' ? 'Bulk · ' : '',
           new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
           ' · ',

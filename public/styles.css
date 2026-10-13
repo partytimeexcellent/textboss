@@ -694,3 +694,7 @@ a.btn.primary { color: var(--accent-text); }
 .setup-card h1 { margin: 0; font-size: 22px; display: flex; align-items: center; gap: 10px; }
 .setup-required { display: grid; gap: 16px; }
 .auth { min-height: 100dvh; }
+
+/* Outgoing texts sent by another staff member: tagged with their name and shaded a little differently */
+.msg.out.other .bubble { background: color-mix(in oklab, var(--bubble-out) 80%, var(--text)); }
+.msg.out .sender { text-align: right; }

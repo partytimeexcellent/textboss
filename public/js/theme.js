@@ -155,9 +155,16 @@ export function themePicker(currentTheme, onSaved = () => {}) {
   designer = logoDesigner(() => t.logo, (logo) => update({ logo }));
   update({});
 
+  const labelOwn = h('input', { type: 'checkbox', checked: !!t.labelOwn });
+  const ownName = h('div', { class: 'sender' }, 'You');
+  const syncOwnName = () => { ownName.hidden = !t.labelOwn; };
+  labelOwn.addEventListener('change', () => { t = { ...t, labelOwn: labelOwn.checked }; syncOwnName(); });
+  syncOwnName();
+
   const preview = h('div', { class: 'theme-preview' },
     h('div', { class: 'msg in' }, h('div', { class: 'bubble' }, 'Hi! Are you open today?')),
-    h('div', { class: 'msg out' }, h('div', { class: 'bubble' }, 'Yes, until 5pm. See you soon!')),
+    h('div', { class: 'msg out other' }, h('div', { class: 'sender' }, 'Front desk'), h('div', { class: 'bubble' }, 'Yes, until 5pm.')),
+    h('div', { class: 'msg out gap' }, ownName, h('div', { class: 'bubble' }, 'See you soon!')),
     h('div', { class: 'theme-preview-row' },
       h('button', { type: 'button', class: 'btn primary' }, 'Button'),
       h('a', { href: '#', onclick: (e) => e.preventDefault() }, 'Link'),
@@ -174,6 +181,7 @@ export function themePicker(currentTheme, onSaved = () => {}) {
         h('label', { class: 'color-field' }, accent, h('span', {}, h('strong', {}, 'Accent'), h('span', { class: 'hint' }, 'Buttons, links, your messages'))),
         h('label', { class: 'color-field' }, highlight, h('span', {}, h('strong', {}, 'Highlight'), h('span', { class: 'hint' }, 'Unread counts, flags')))),
       h('div', { class: 'field-label' }, 'Preview'), preview,
+      h('label', { class: 'check' }, labelOwn, h('span', {}, 'Show my name on messages I send', h('span', { class: 'hint' }, ' — messages from other staff always show who sent them, in a slightly different shade'))),
       h('div', { class: 'field-label' }, 'App icon'), designer,
       h('p', { class: 'hint' }, 'Saved to your account, so it follows you to other devices. Other users keep their own choice.'),
     ],

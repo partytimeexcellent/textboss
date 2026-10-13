@@ -325,6 +325,7 @@ export function serializeMessage(row) {
     status: row.status,
     error: row.error,
     sentBy: row.kind === 'auto' ? 'Auto-reply' : row.sent_by_name ?? null,
+    sentById: row.sent_by ?? null,
     kind: row.kind ?? null,
     createdAt: row.created_at,
   };
