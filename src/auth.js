@@ -19,6 +19,14 @@ export function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(expected, actual);
 }
 
+// A browser drops Secure cookies on http://, which looks like a login that
+// silently fails, so only mark them Secure when the page is really on HTTPS.
+function isHttps(req) {
+  if (req?.secure) return true;
+  const proto = String(req?.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase();
+  return proto === 'https' || config.publicUrl.startsWith('https://') && req?.headers.host === new URL(config.publicUrl).host;
+}
+
 export function createSession(res, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + SESSION_DAYS * 86400_000;
@@ -30,7 +38,7 @@ export function createSession(res, userId) {
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: config.secureCookies,
+    secure: config.secureCookies === 'auto' ? isHttps(res.req) : config.secureCookies,
     expires: new Date(expiresAt),
   });
 }

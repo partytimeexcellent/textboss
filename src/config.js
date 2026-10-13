@@ -13,5 +13,7 @@ export const config = {
     apiBase: (env.BULKVS_API_BASE || 'https://portal.bulkvs.com/api/v1.0').replace(/\/+$/, ''),
   },
   webhookSecret: env.WEBHOOK_SECRET || '',
-  secureCookies: env.INSECURE_COOKIES !== '1',
+  // 'auto': Secure cookies when the request came over HTTPS (directly or via a
+  // proxy's X-Forwarded-Proto), plain cookies over http:// on the local network
+  secureCookies: env.INSECURE_COOKIES === '1' ? false : 'auto',
 };
