@@ -71,7 +71,7 @@ function editCanned(c) {
       h('details', { class: 'help' }, h('summary', {}, 'Choosing keywords'),
         h('p', {}, 'A keyword should be one short word. It only triggers when the entire incoming text matches it exactly (any capitalization). For example, "please send me your hours" does not trigger HOURS. STOP, START, HELP and similar words are reserved by carriers.')),
       h('label', {}, 'Message body', h('textarea', { name: 'body', required: true, rows: 5 }, c?.body ?? '')),
-      h('div', { class: 'hint' }, 'Merge fields: {first_name}, {last_name}, {full_name} are filled in from the contact.'),
+      h('div', { class: 'hint' }, 'Merge fields: {first_name}, {last_name}, {full_name}, and {nickname} (the first name if there is no nickname) are filled in from the contact.'),
       h('label', { class: 'switch-label' }, away, h('span', {}, 'Away message', h('span', { class: 'hint' }, ' — auto-reply to incoming texts while this is on. Only one can be on.'))),
       h('div', {}, h('button', { type: 'button', class: 'btn', onclick: () => file.click() }, 'Upload attachment'), file),
       mediaRow,

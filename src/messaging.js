@@ -109,13 +109,15 @@ export function recordInbound({ from, to, body, media }) {
 }
 
 function firstContactFor(phone) {
-  return db.prepare('SELECT first_name, last_name FROM contacts WHERE phone = ? ORDER BY id LIMIT 1').get(phone);
+  return db.prepare('SELECT first_name, last_name, nickname FROM contacts WHERE phone = ? ORDER BY id LIMIT 1').get(phone);
 }
 
 export function mergeFields(text, contact) {
   const first = contact?.first_name ?? contact?.firstName ?? '';
   const last = contact?.last_name ?? contact?.lastName ?? '';
+  const nick = contact?.nickname || first;
   return text
+    .replace(/\{nickname\}/gi, nick)
     .replace(/\{first_name\}/gi, first)
     .replace(/\{last_name\}/gi, last)
     .replace(/\{full_name\}/gi, [first, last].filter(Boolean).join(' '))

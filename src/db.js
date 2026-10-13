@@ -206,6 +206,8 @@ addColumn('conversations', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('conversations', 'flagged', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'theme', 'TEXT');
 addColumn('import_log', 'issues', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('numbers', 'active', 'INTEGER NOT NULL DEFAULT 1');
+addColumn('contacts', 'nickname', "TEXT NOT NULL DEFAULT ''");
 
 db.exec(`
   -- Admin-editable settings (e.g. BulkVS credentials); these override .env
@@ -257,23 +259,27 @@ export function getOrCreateConversation(numberId, participants) {
     .get(numberId, participants);
 }
 
+// Only active numbers are visible anywhere in the app. Texts to an inactive
+// number are still stored, so turning it back on shows its history.
 export function userNumberIds(user) {
-  if (user.is_admin) return db.prepare('SELECT id FROM numbers').all().map((r) => r.id);
+  if (user.is_admin) return db.prepare('SELECT id FROM numbers WHERE active = 1').all().map((r) => r.id);
   return db
-    .prepare('SELECT number_id FROM user_numbers WHERE user_id = ?')
+    .prepare('SELECT un.number_id FROM user_numbers un JOIN numbers n ON n.id = un.number_id WHERE un.user_id = ? AND n.active = 1')
     .all(user.id)
     .map((r) => r.number_id);
 }
 
 export function userCanAccessNumber(user, numberId) {
+  if (!db.prepare('SELECT 1 FROM numbers WHERE id = ? AND active = 1').get(numberId)) return false;
   if (user.is_admin) return true;
   return !!db
     .prepare('SELECT 1 FROM user_numbers WHERE user_id = ? AND number_id = ?')
     .get(user.id, numberId);
 }
 
-// Users who should be notified about activity on a number
+// Users who should be notified about activity on a number (nobody if it's inactive)
 export function userIdsForNumber(numberId) {
+  if (!db.prepare('SELECT 1 FROM numbers WHERE id = ? AND active = 1').get(numberId)) return [];
   return db
     .prepare(
       `SELECT id FROM users WHERE is_admin = 1

@@ -219,11 +219,11 @@ api.get('/conversations', (req, res) => {
     where += ` AND (
       EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id AND m2.body LIKE ?)
       OR EXISTS (SELECT 1 FROM contacts ct
-                 WHERE (ct.first_name || ' ' || ct.last_name LIKE ? OR ct.last_name || ' ' || ct.first_name LIKE ? OR ct.patient_id = ?)
+                 WHERE (ct.first_name || ' ' || ct.last_name LIKE ? OR ct.last_name || ' ' || ct.first_name LIKE ? OR ct.nickname LIKE ? OR ct.patient_id = ?)
                    AND ct.phone != '' AND (',' || c.participants || ',') LIKE ('%,' || ct.phone || ',%'))
       ${digits.length >= 3 ? 'OR c.participants LIKE ?' : ''}
     )`;
-    params.push(`%${q}%`, `%${q}%`, `%${q}%`, q);
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, q);
     if (digits.length >= 3) params.push(`%${digits}%`);
   }
 
@@ -498,7 +498,7 @@ admin.delete('/users/:id', (req, res) => {
 });
 
 admin.get('/numbers', (_req, res) => {
-  res.json(db.prepare('SELECT id, phone, label FROM numbers ORDER BY label, phone').all());
+  res.json(db.prepare('SELECT id, phone, label, active FROM numbers ORDER BY active DESC, label, phone').all().map((n) => ({ ...n, active: !!n.active })));
 });
 
 admin.post('/numbers', (req, res) => {
@@ -512,7 +512,14 @@ admin.post('/numbers', (req, res) => {
 });
 
 admin.patch('/numbers/:id', (req, res) => {
-  db.prepare('UPDATE numbers SET label = ? WHERE id = ?').run(String(req.body?.label ?? '').trim(), Number(req.params.id));
+  const id = Number(req.params.id);
+  if (req.body?.label !== undefined) {
+    db.prepare('UPDATE numbers SET label = ? WHERE id = ?').run(String(req.body.label ?? '').trim(), id);
+  }
+  if (req.body?.active !== undefined) {
+    db.prepare('UPDATE numbers SET active = ? WHERE id = ?').run(req.body.active ? 1 : 0, id);
+    publish(allUserIds(), 'numbers', {});
+  }
   res.json({ ok: true });
 });
 

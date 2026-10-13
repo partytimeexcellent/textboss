@@ -15,6 +15,7 @@ import {
   updateContact,
   setOptOut,
   contactNames,
+  contactMergeNames,
 } from '../contacts.js';
 import { createBroadcast, serializeBroadcast } from '../messaging.js';
 
@@ -28,6 +29,7 @@ const notifyContacts = () => publish(allUserIds(), 'contacts', {});
 router.get('/contacts/index', (_req, res) => {
   res.json({
     names: contactNames(),
+    people: contactMergeNames(),
     optedOut: db.prepare('SELECT phone FROM opt_outs').all().map((r) => r.phone),
     blocked: db.prepare('SELECT phone FROM blocked').all().map((r) => r.phone),
   });
@@ -42,10 +44,10 @@ router.get('/contacts', (req, res) => {
     for (const word of q.split(/\s+/).slice(0, 5)) {
       const digits = word.replace(/\D/g, '');
       const like = `%${word}%`;
-      where.push(`(c.first_name LIKE ? OR c.last_name LIKE ? OR c.email LIKE ? OR c.patient_id LIKE ? OR c.dob LIKE ?${
+      where.push(`(c.first_name LIKE ? OR c.last_name LIKE ? OR c.nickname LIKE ? OR c.email LIKE ? OR c.patient_id LIKE ? OR c.dob LIKE ?${
         digits.length >= 3 ? ' OR c.phone LIKE ?' : ''
       })`);
-      params.push(like, like, like, like, like);
+      params.push(like, like, like, like, like, like);
       if (digits.length >= 3) params.push(`%${digits}%`);
     }
   }

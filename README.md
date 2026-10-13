@@ -3,13 +3,14 @@
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
 - **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, delivery status, and who on the team sent each message. Pin and flag from the list (hover a row) or the conversation header; the ⋮ menu also has mark unread, archive, opt out/in, block sender, delete history. Pins and flags are shared by the team.
-- **Contacts:** first/last name, mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
+- **Contacts:** first/last name, nickname (shown as "(Bobby) Robert Smith"), mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
 - **Opt-out:** applies to the phone number. Texting an opted-out number brings up a warning you must confirm by typing SEND, and the server enforces it. Replies of STOP, UNSUBSCRIBE, etc. opt out automatically, and START opts back in.
 - **Blocked senders:** their texts are dropped. Manage them in Admin settings.
-- **Lists and bulk messages:** tick contacts (or "select all" on a search or list), save them as a named list, and send everyone an individual text with `{first_name}`-style merge fields. Sends run in the background at one per second, skipping opted-out and blocked numbers, with a live progress page.
+- **Lists and bulk messages:** tick contacts (or "select all" on a search or list), save them as a named list, and send everyone an individual text with merge fields (`{first_name}`, `{last_name}`, `{full_name}`, `{nickname}`). Sends run in the background at one per second, skipping opted-out and blocked numbers, with a live progress page.
 - **Canned responses:** insert from the composer. Optional keyword auto-reply (an exact one-word match) and an away message (auto-reply at most once per conversation every 12 hours).
 - **Contact import:** upload .xls/.xlsx/.csv in Admin settings with a preview, push contacts from other software with an API key, or drop exports into a watched folder. WebPT's "Patient Listing" report is recognized as-is.
 - **Appearance:** each user picks Light / Dark / Auto and a color theme (presets or custom accent and highlight colors), saved to their account.
+- **Active numbers:** untick numbers you don't use in Admin → Numbers and they disappear from the app; with one active number the number selector is hidden.
 - **Admin settings** in tabs: BulkVS connection (enter and test credentials in the app; these override `.env`), webhook setup and log, numbers, users, contact import and API keys, blocked numbers.
 - Live updates across all signed-in users (server-sent events), browser notifications, and installable on a phone (PWA).
 

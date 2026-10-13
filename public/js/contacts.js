@@ -346,6 +346,8 @@ async function renderContact(id, query) {
     h('div', { class: 'form-grid' },
       field('First name', 'firstName', { autocomplete: 'off' }),
       field('Last name', 'lastName', { autocomplete: 'off' }),
+      field('Nickname', 'nickname', { autocomplete: 'off', placeholder: 'Shown as (Nickname) First Last' }),
+      h('div'),
       field('Mobile phone', 'phone', { type: 'tel', value: c.phone ? formatPhone(c.phone) : '' }),
       field('Date of birth', 'dob', { type: 'date' }),
       field('Email', 'email', { type: 'email' }),
@@ -456,7 +458,7 @@ async function renderBulk() {
     const n = textCount(text);
     summary.textContent = `${plural(n)} to ${phones.size} ${phones.size === 1 ? 'number' : 'numbers'}`;
     composer.sendBtn.textContent = `Send ${plural(n)}`;
-    preview.hidden = !/\{(first|last|full)_name\}/i.test(text) || !textable.length;
+    preview.hidden = !/\{((first|last|full)_name|nickname)\}/i.test(text) || !textable.length;
     fill(preview, h('div', { class: 'hint' }, `Preview for ${fullName(textable[0] ?? {})}:`),
       h('div', { class: 'bubble' }, mergeFields(text, textable[0])));
   };
@@ -476,7 +478,7 @@ async function renderBulk() {
           h('details', {}, h('summary', {}, 'Show recipients'), h('p', { class: 'hint' }, names(textable))),
           optedOut.length > 0 && h('div', { class: 'warn-text' }, `${optedOut.length} opted out or blocked, will be skipped: ${names(optedOut)}`),
           noPhone.length > 0 && h('div', { class: 'warn-text' }, `${noPhone.length} with no phone number, will be skipped: ${names(noPhone)}`)),
-        h('div', { class: 'hint' }, 'Merge fields: {first_name}, {last_name}, {full_name}. Texts go out one per second; you can leave this page while they send.'),
+        h('div', { class: 'hint' }, 'Merge fields: {first_name}, {last_name}, {full_name}, {nickname} (falls back to the first name). Texts go out one per second; you can leave this page while they send.'),
         h('div', {}, h('button', { class: 'link-btn', onclick: addToListDialog }, 'Save these recipients as a list'))),
       preview,
       error,

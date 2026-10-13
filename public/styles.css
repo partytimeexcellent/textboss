@@ -610,3 +610,5 @@ dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
 a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
 a.btn.primary { color: var(--accent-text); }
 .btn svg { width: 16px; height: 16px; }
+.table tr.inactive td:not(:first-child) { opacity: .5; }
+.table td input.switch { min-width: 0; width: 40px; }

@@ -2,7 +2,7 @@
 
 import {
   h, fill, icon, state, els, route, api, setUnauthorizedHandler, loadIndex, loadCanned, loadLists,
-  toast, formatPhone, nameFor, conversationName, numberLabel, numberOptions, conversationAvatar,
+  toast, formatPhone, fullName, nameFor, conversationName, numberLabel, numberOptions, conversationAvatar,
   relTime, store, dialog, confirmDialog, confirmOptOutDialog, openMenu, backButton, buildComposer,
 } from './js/core.js';
 import { renderContactsSidebar, renderContactsMain, refreshContacts, onBroadcastEvent } from './js/contacts.js';
@@ -209,6 +209,14 @@ function connectEvents() {
     if (route().tab === 'contacts') refreshContacts();
   });
   es.addEventListener('canned', () => loadCanned());
+  es.addEventListener('numbers', async () => {
+    const me = await api('/me').catch(() => null);
+    if (!me) return;
+    state.numbers = me.numbers;
+    els.sidebarTab = null; // redraw the number selector
+    renderRoute();
+    loadConversations();
+  });
   es.addEventListener('broadcast', (e) => onBroadcastEvent(JSON.parse(e.data)));
   es.addEventListener('open', () => scheduleListReload());
 }
@@ -482,7 +490,7 @@ function renderNewMessage() {
       const withPhone = contacts.filter((c) => c.phone);
       fill(suggest, ...withPhone.map((c) =>
         h('button', { type: 'button', onclick: () => addRecipient(c.phone) },
-          `${[c.firstName, c.lastName].filter(Boolean).join(' ')} · ${formatPhone(c.phone)}`,
+          `${fullName(c)} · ${formatPhone(c.phone)}`,
           c.optedOut && h('span', { class: 'tag warn' }, 'Opted out'))));
       suggest.hidden = !withPhone.length;
     }, 200);
@@ -547,8 +555,8 @@ async function openThread(id) {
   // Merge fields in canned responses use the first contact on a 1:1 thread
   const mergeContact = () => {
     if (t.participants.length !== 1) return null;
-    const [first, ...rest] = (state.names[t.participants[0]]?.[0] ?? '').split(' ');
-    return { firstName: first ?? '', lastName: rest.join(' ') };
+    const [firstName = '', lastName = '', nickname = ''] = state.people[t.participants[0]] ?? [];
+    return { firstName, lastName, nickname };
   };
 
   fill(els.main, 

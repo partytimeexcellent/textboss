@@ -159,14 +159,32 @@ async function renderNumbers() {
   const phone = h('input', { type: 'tel', placeholder: '3105551212' });
   const label = h('input', { type: 'text', placeholder: 'e.g. Front desk' });
 
+  const activeCount = numbers.filter((n) => n.active).length;
   return card('Phone numbers',
-    'Your BulkVS numbers. Give each a label so the team can tell them apart; users only see the numbers assigned to them on the Users tab.',
+    'Your BulkVS numbers. Untick Active to hide a number everywhere in TextBoss; with only one active number, the number selector disappears. Texts that arrive on an inactive number are still saved.',
     numbers.length
       ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-          h('thead', {}, h('tr', {}, h('th', {}, 'Number'), h('th', {}, 'Label'), h('th', { class: 'right' }, 'Actions'))),
+          h('thead', {}, h('tr', {}, h('th', {}, 'Active'), h('th', {}, 'Number'), h('th', {}, 'Label'), h('th', { class: 'right' }, 'Actions'))),
           h('tbody', {}, numbers.map((n) => {
             const input = h('input', { type: 'text', value: n.label, 'aria-label': `Label for ${formatPhone(n.phone)}` });
-            return h('tr', {},
+            const active = h('input', {
+              type: 'checkbox',
+              class: 'switch',
+              checked: n.active,
+              'aria-label': `${formatPhone(n.phone)} active`,
+              onchange: async () => {
+                if (!active.checked && activeCount === 1 && n.active) {
+                  active.checked = true;
+                  return toast('Keep at least one number active');
+                }
+                await api(`/admin/numbers/${n.id}`, { method: 'PATCH', body: { active: active.checked } });
+                await refreshNumbers();
+                toast(active.checked ? `${formatPhone(n.phone)} is active` : `${formatPhone(n.phone)} is hidden`);
+                renderAdmin();
+              },
+            });
+            return h('tr', { class: n.active ? '' : 'inactive' },
+              h('td', {}, active),
               h('td', { class: 'nowrap strong' }, formatPhone(n.phone)),
               h('td', {}, input),
               h('td', {}, h('div', { class: 'row-actions' },
@@ -246,7 +264,7 @@ async function renderUsers() {
 
 // ---------- Contacts & import ----------
 
-const FIELD_NAMES = { firstName: 'First name', lastName: 'Last name', phone: 'Phone', dob: 'Date of birth', email: 'Email', patientId: 'Patient ID', notes: 'Notes' };
+const FIELD_NAMES = { firstName: 'First name', lastName: 'Last name', nickname: 'Nickname', phone: 'Phone', dob: 'Date of birth', email: 'Email', patientId: 'Patient ID', notes: 'Notes' };
 const showValue = (field, v) => (field === 'phone' ? formatPhone(v) : field === 'dob' ? formatDob(v) : v) || '(empty)';
 
 function csvDownload(filename, rows) {

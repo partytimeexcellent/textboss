@@ -86,6 +86,7 @@ export const state = {
   numbers: [],
   mockMode: false,
   names: {}, // phone -> [contact names]
+  people: {}, // phone -> [first, last, nickname] of the first contact, for merge fields
   optedOut: new Set(),
   blocked: new Set(),
   canned: [],
@@ -143,6 +144,7 @@ export async function loadIndex() {
   const idx = await api('/contacts/index').catch(() => null);
   if (!idx) return;
   state.names = idx.names;
+  state.people = idx.people ?? {};
   state.optedOut = new Set(idx.optedOut);
   state.blocked = new Set(idx.blocked);
 }
@@ -179,7 +181,11 @@ export function nameFor(phone) {
 }
 
 export const conversationName = (participants) => participants.map(nameFor).join(', ');
-export const fullName = (c) => [c.firstName, c.lastName].filter(Boolean).join(' ') || '(no name)';
+// "(Bobby) Robert Smith" when a nickname is set
+export const fullName = (c) => {
+  const name = [c.firstName, c.lastName].filter(Boolean).join(' ');
+  return (c.nickname ? `(${c.nickname}) ${name}`.trim() : name) || '(no name)';
+};
 
 export function numberLabel(numberId) {
   const n = state.numbers.find((x) => x.id === numberId);
@@ -199,7 +205,8 @@ export function avatar(seed, label) {
 }
 
 export function initials(name) {
-  return name && !/^[\d(+]/.test(name) ? name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : '#';
+  const plain = String(name ?? '').replace(/^\([^)]*\)\s*/, ''); // ignore a leading (nickname)
+  return plain && !/^[\d(+]/.test(plain) ? plain.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : '#';
 }
 
 export function conversationAvatar(participants) {
@@ -235,7 +242,9 @@ export function segments(text) {
 export function mergeFields(text, contact) {
   const first = contact?.firstName ?? '';
   const last = contact?.lastName ?? '';
+  const nick = contact?.nickname || first;
   return text
+    .replace(/\{nickname\}/gi, nick)
     .replace(/\{first_name\}/gi, first)
     .replace(/\{last_name\}/gi, last)
     .replace(/\{full_name\}/gi, [first, last].filter(Boolean).join(' '))

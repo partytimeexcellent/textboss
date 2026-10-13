@@ -2,9 +2,10 @@ import * as XLSX from 'xlsx';
 import { db, tx } from './db.js';
 import { normalizePhone, isValidPhone } from './phone.js';
 
-export const CONTACT_FIELDS = ['firstName', 'lastName', 'phone', 'dob', 'email', 'patientId', 'notes'];
+export const CONTACT_FIELDS = ['firstName', 'lastName', 'nickname', 'phone', 'dob', 'email', 'patientId', 'notes'];
 const COLUMN = {
   firstName: 'first_name',
+  nickname: 'nickname',
   lastName: 'last_name',
   phone: 'phone',
   dob: 'dob',
@@ -17,6 +18,7 @@ export function serializeContact(row) {
   return {
     id: row.id,
     firstName: row.first_name,
+    nickname: row.nickname ?? '',
     lastName: row.last_name,
     phone: row.phone,
     dob: row.dob,
@@ -40,7 +42,12 @@ export function getContact(id) {
   return row ? serializeContact(row) : null;
 }
 
-export const fullName = (c) => [c.firstName ?? c.first_name, c.lastName ?? c.last_name].filter(Boolean).join(' ');
+// "(Bobby) Robert Smith" when a nickname is set
+export const fullName = (c) => {
+  const nick = c.nickname ?? '';
+  const name = [c.firstName ?? c.first_name, c.lastName ?? c.last_name].filter(Boolean).join(' ');
+  return nick ? `(${nick}) ${name}`.trim() : name;
+};
 
 // Accepts YYYY-MM-DD, MM/DD/YYYY, M/D/YY, Excel serials and Date objects.
 // Anything that is not a real calendar date comes back unchanged (and fails validation).
@@ -100,10 +107,10 @@ export function createContact(c) {
   const now = Date.now();
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO contacts (first_name, last_name, phone, dob, email, patient_id, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO contacts (first_name, last_name, nickname, phone, dob, email, patient_id, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(c.firstName ?? '', c.lastName ?? '', c.phone ?? '', c.dob ?? '', c.email ?? '', c.patientId ?? '', c.notes ?? '', now, now);
+    .run(c.firstName ?? '', c.lastName ?? '', c.nickname ?? '', c.phone ?? '', c.dob ?? '', c.email ?? '', c.patientId ?? '', c.notes ?? '', now, now);
   return Number(lastInsertRowid);
 }
 
@@ -133,6 +140,7 @@ export function setOptOut(phone, optedOut, source) {
 // Header text (lowercased, letters and digits only) -> field
 const HEADER_MAP = [
   [/^(firstname|first|namefirst|givenname|patientfirstname)$/, 'firstName'],
+  [/^(nickname|nick|preferredname|goesby|namepreferred)$/, 'nickname'],
   [/^(lastname|last|namelast|surname|familyname|patientlastname)$/, 'lastName'],
   [/^(name|fullname|patientname|patient)$/, 'fullName'],
   [/^(cellphone|cell|mobile|mobilephone|cellnumber|mobilenumber|sms|textnumber)$/, 'cellPhone'],
@@ -196,6 +204,7 @@ export function parseContactFile(buffer) {
     const rec = {
       _row: firstRow + r,
       firstName: get('firstName'),
+      nickname: get('nickname'),
       lastName: get('lastName'),
       dob: get('dob'),
       email: get('email'),
@@ -328,9 +337,18 @@ export function logImport(source, filename, result, error = null) {
 // phone -> display name, for conversation lists
 export function contactNames() {
   const rows = db
-    .prepare(`SELECT phone, first_name, last_name FROM contacts WHERE phone != '' ORDER BY last_name, first_name`)
+    .prepare(`SELECT phone, first_name, last_name, nickname FROM contacts WHERE phone != '' ORDER BY last_name, first_name`)
     .all();
   const map = {};
   for (const r of rows) (map[r.phone] ??= []).push(fullName(r) || r.phone);
+  return map;
+}
+
+// phone -> [first, last, nickname] of the earliest contact, for merge fields
+export function contactMergeNames() {
+  const map = {};
+  for (const r of db.prepare(`SELECT phone, first_name, last_name, nickname FROM contacts WHERE phone != '' ORDER BY id`).all()) {
+    map[r.phone] ??= [r.first_name, r.last_name, r.nickname];
+  }
   return map;
 }
