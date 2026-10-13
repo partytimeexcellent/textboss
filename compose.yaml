@@ -1,4 +1,4 @@
-# Textline
+# TextBoss
 #
 # Behind an existing reverse proxy (Pangolin, Traefik, nginx...):
 #   docker compose up -d
@@ -17,7 +17,7 @@ services:
       DATA_DIR: /app/data
       PORT: "3000"
     volumes:
-      - textline-data:/app/data
+      - textboss-data:/app/data
     ports:
       - "3000:3000"
 
@@ -38,6 +38,6 @@ services:
       - caddy-config:/config
 
 volumes:
-  textline-data:
+  textboss-data:
   caddy-data:
   caddy-config:

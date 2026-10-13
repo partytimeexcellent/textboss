@@ -1,4 +1,4 @@
-# Textline
+# TextBoss
 
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
@@ -26,7 +26,7 @@ For local runs, add `INSECURE_COOKIES=1` to `.env`, because sign-in cookies are 
 ## Deploy with Docker Compose
 
 ```bash
-git clone <your repo> textline && cd textline
+git clone https://github.com/partytimeexcellent/textboss.git && cd textboss
 cp .env.example .env    # set PUBLIC_URL, BULKVS_*, WEBHOOK_SECRET
 docker compose up -d --build
 ```
@@ -35,7 +35,7 @@ This runs the app on port 3000. Put your reverse proxy in front of it and set `P
 
 With no reverse proxy, run `docker compose --profile caddy up -d --build` instead. That also starts Caddy, which gets a Let's Encrypt certificate for `DOMAIN`. It needs a DNS record pointing at the server and ports 80/443 open.
 
-Data (database and uploaded media) lives in the `textline-data` volume. To update, pull the new code and run the same `up` command again. To back up:
+Data (database and uploaded media) lives in the `textboss-data` volume. To update, pull the new code and run the same `up` command again. To back up:
 
 ```bash
 docker compose cp app:/app/data ./backup-$(date +%F)
@@ -62,7 +62,7 @@ Other options:
 
 1. **Host it on public HTTPS.** BulkVS has to reach your webhook, and carriers have to download MMS attachments you send. Any VPS behind Pangolin, Caddy or nginx works. Behind Pangolin, add the bypass rules described above. For testing from your Mac, use `cloudflared tunnel --url http://localhost:3000` or ngrok. Set `PUBLIC_URL` to that address and remove `INSECURE_COOKIES`.
 2. **Credentials.** In the [BulkVS portal](https://portal.bulkvs.com/login.php), open **API → API Credentials**. Under "API Information – REST API", copy the **Username** into `BULKVS_USERNAME` and the **Password** into `BULKVS_PASSWORD`. These are separate from your portal login.
-3. **Webhook.** Set `WEBHOOK_SECRET` to a long random string and restart. Open Admin settings in the app and copy the webhook URL. In BulkVS, open **Messaging → Messaging Webhooks**. Under "Message Webhooks", enter a name (e.g. `Textline`) in the "Trunk Group" field and paste the URL as the "Message URL", then click **Add**. Click the new webhook in the table to set "Delivery Receipt". Turning it on gives you Delivered/Failed status, but the receipt format is unconfirmed (see below). Set it to false if receipts show up as "not applied" in the webhook log.
+3. **Webhook.** Set `WEBHOOK_SECRET` to a long random string and restart. Open Admin settings in the app and copy the webhook URL. In BulkVS, open **Messaging → Messaging Webhooks**. Under "Message Webhooks", enter a name (e.g. `TextBoss`) in the "Trunk Group" field and paste the URL as the "Message URL", then click **Add**. Click the new webhook in the table to set "Delivery Receipt". Turning it on gives you Delivered/Failed status, but the receipt format is unconfirmed (see below). Set it to false if receipts show up as "not applied" in the webhook log.
 4. **Assign the webhook to each number.** In BulkVS, open **Inbound → DIDs – Manage** and click the number. Make sure SMS and MMS are enabled (BulkVS shows a "Disable" button when they already are), and set "Messaging Webhook" to the one you created.
 5. **Numbers in the app.** Add each BulkVS number in Admin settings, then assign numbers to users.
 

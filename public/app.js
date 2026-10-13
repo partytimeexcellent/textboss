@@ -1,4 +1,4 @@
-// Textline web client. No build step: plain ES modules and DOM APIs.
+// TextBoss web client. No build step: plain ES modules and DOM APIs.
 
 // ---------- Helpers ----------
 
@@ -118,7 +118,7 @@ const state = {
   numbers: [],
   mockMode: false,
   contacts: new Map(),
-  filterNumber: store('tl.number') || 'all',
+  filterNumber: store('tb.number') || 'all',
   search: '',
   showArchived: false,
   conversations: [],
@@ -194,7 +194,7 @@ async function renderAuth() {
         }
       },
     },
-    h('h1', {}, h('img', { src: '/icon.svg', alt: '' }), 'Textline'),
+    h('h1', {}, h('img', { src: '/icon.svg', alt: '' }), 'TextBoss'),
     h('p', {}, setup.needed ? 'Create the first admin account.' : 'Sign in to your team inbox.'),
     fields,
     error,
@@ -215,7 +215,7 @@ function renderShell() {
       'aria-label': 'Number',
       onchange: (e) => {
         state.filterNumber = e.target.value;
-        store('tl.number', state.filterNumber);
+        store('tb.number', state.filterNumber);
         loadConversations();
       },
     },
@@ -436,7 +436,7 @@ function renderList() {
   if (!els.list) return;
   const r = route();
   const unreadTotal = state.conversations.reduce((s, c) => s + c.unread, 0);
-  document.title = unreadTotal ? `(${unreadTotal}) Textline` : 'Textline';
+  document.title = unreadTotal ? `(${unreadTotal}) TextBoss` : 'TextBoss';
 
   if (!state.conversations.length) {
     els.list.replaceChildren(

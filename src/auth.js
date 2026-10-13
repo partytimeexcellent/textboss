@@ -3,7 +3,7 @@ import { db } from './db.js';
 import { config } from './config.js';
 
 const SESSION_DAYS = 30;
-export const COOKIE = 'tl_session';
+export const COOKIE = 'tb_session';
 
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16);

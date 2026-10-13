@@ -455,7 +455,7 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(config.port, () => {
-  console.log(`Textline listening on http://localhost:${config.port}`);
+  console.log(`TextBoss listening on http://localhost:${config.port}`);
   console.log(mockMode ? 'Mock mode: no BulkVS credentials set, messages are not really sent.' : 'BulkVS mode.');
   if (!config.webhookSecret) console.log('WEBHOOK_SECRET is not set, so inbound messages are disabled.');
 });
