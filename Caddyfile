@@ -1,0 +1,7 @@
+{$DOMAIN} {
+	encode gzip
+	# Server-sent events need responses streamed, not buffered
+	reverse_proxy app:3000 {
+		flush_interval -1
+	}
+}

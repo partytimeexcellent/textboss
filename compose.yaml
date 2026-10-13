@@ -1,0 +1,43 @@
+# Textline
+#
+# Behind an existing reverse proxy (Pangolin, Traefik, nginx...):
+#   docker compose up -d
+#   then point the proxy at port 3000 on this host. No ports 80/443 needed here.
+#
+# Standalone with Caddy for automatic HTTPS (needs a DNS record for DOMAIN
+# pointing here and ports 80/443 open):
+#   docker compose --profile caddy up -d
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+      PORT: "3000"
+    volumes:
+      - textline-data:/app/data
+    ports:
+      - "3000:3000"
+
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: [caddy]
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  textline-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,18 @@
+{
+  "name": "textline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-user, multi-number SMS/MMS web app for BulkVS",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
