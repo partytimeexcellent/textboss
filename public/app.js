@@ -42,6 +42,14 @@ function render() {
 
 window.addEventListener('hashchange', () => state.me && renderRoute());
 
+// Press N anywhere (outside a text field or dialog) to start a new message
+document.addEventListener('keydown', (e) => {
+  if (!state.me || e.key.toLowerCase() !== 'n' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
+  e.preventDefault();
+  location.hash = '#/new';
+});
+
 // ---------- Auth ----------
 
 async function renderAuth() {
@@ -100,7 +108,7 @@ function renderShell() {
       h('div', { class: 'side-top' },
         h('img', { class: 'logo', src: '/icon.svg', alt: '' }),
         h('div', { class: 'brand' }, h('span', { class: 'brand-1' }, 'Text'), h('span', { class: 'brand-2' }, 'Boss')),
-        h('button', { class: 'icon-btn', title: 'New message', onclick: () => (location.hash = '#/new') }, icon('compose')),
+        h('button', { class: 'new-btn', title: 'New message (N)', onclick: () => (location.hash = '#/new') }, icon('newchat'), h('span', {}, 'New')),
         h('button', { class: 'icon-btn', title: 'Menu', onclick: (e) => openUserMenu(e.currentTarget) }, icon('menu'))),
       els.tabs,
       state.mockMode && h('div', { class: 'mock-banner' }, 'Mock mode: messages are not really sent.'),
@@ -347,27 +355,70 @@ function renderList() {
       if (c.last?.direction === 'out') preview = `You: ${preview}`;
       if (c.last?.status === 'failed') preview = `Failed · ${preview}`;
       const optedOut = c.participants.some((p) => state.optedOut.has(p));
+      // The row is a div so the pin/flag buttons aren't nested inside the link
       return h(
-        'a',
+        'div',
         {
           class: `conv${r.view === 'thread' && r.id === c.id ? ' active' : ''}${c.unread ? ' unread' : ''}${c.flagged ? ' flagged' : ''}`,
-          href: `#/c/${c.id}`,
+          onclick: (e) => !e.target.closest('a, button') && (location.hash = `#/c/${c.id}`),
         },
-        conversationAvatar(c.participants),
-        h('div', { class: 'main' },
-          h('div', { class: 'name' }, conversationName(c.participants), optedOut && h('span', { class: 'tag warn' }, 'Opted out')),
-          h('div', { class: 'preview' }, preview),
-          multi && h('div', { class: 'via' }, `via ${numberLabel(c.numberId)}`),
-        ),
+        h('a', { class: 'conv-link', href: `#/c/${c.id}` },
+          conversationAvatar(c.participants),
+          h('div', { class: 'main' },
+            h('div', { class: 'name' }, conversationName(c.participants), optedOut && h('span', { class: 'tag warn' }, 'Opted out')),
+            h('div', { class: 'preview' }, preview),
+            multi && h('div', { class: 'via' }, `via ${numberLabel(c.numberId)}`),
+          )),
         h('div', { class: 'meta' },
-          h('span', { class: 'meta-top' },
-            c.pinned && h('span', { class: 'mark pin', title: 'Pinned' }, icon('pin')),
-            c.flagged && h('span', { class: 'mark flag', title: 'Flagged' }, icon('flag')),
-            relTime(c.lastMessageAt)),
-          c.unread ? h('span', { class: 'badge' }, c.unread) : null),
+          h('span', { class: 'meta-time' }, relTime(c.lastMessageAt)),
+          h('div', { class: 'meta-bottom' },
+            quickToggle(c, 'pinned'),
+            quickToggle(c, 'flagged'),
+            c.unread ? h('span', { class: 'badge' }, c.unread) : null)),
       );
     }),
   );
+}
+
+// ----- Pin / flag toggles (list rows and thread header) -----
+
+const TOGGLES = {
+  pinned: { path: 'pin', icon: 'pin', on: 'Unpin', off: 'Pin to top', done: ['Pinned to the top', 'Unpinned'] },
+  flagged: { path: 'flag', icon: 'flag', on: 'Remove flag', off: 'Flag as important', done: ['Flagged', 'Flag removed'] },
+};
+
+async function setToggle(conversation, field) {
+  const spec = TOGGLES[field];
+  const next = !conversation[field];
+  // Update everywhere right away, then confirm with the server
+  for (const c of [conversation, state.thread?.id === conversation.id ? state.thread : null, ...state.conversations.filter((x) => x.id === conversation.id)]) {
+    if (c) c[field] = next;
+  }
+  renderList();
+  renderThreadChrome();
+  try {
+    await api(`/conversations/${conversation.id}/${spec.path}`, { method: 'POST', body: { [field]: next } });
+    toast(spec.done[next ? 0 : 1]);
+  } catch (err) {
+    toast(err.message);
+  }
+  loadConversations();
+}
+
+function quickToggle(conversation, field, extraClass = '') {
+  const spec = TOGGLES[field];
+  const on = !!conversation[field];
+  return h('button', {
+    type: 'button',
+    class: `quick ${spec.icon}${on ? ' on' : ''} ${extraClass}`,
+    title: on ? spec.on : spec.off,
+    'aria-label': on ? spec.on : spec.off,
+    'aria-pressed': String(on),
+    onclick: (e) => {
+      e.stopPropagation();
+      setToggle(conversation, field);
+    },
+  }, icon(spec.icon));
 }
 
 // ---------- Sending with the opt-out guard ----------
@@ -530,13 +581,13 @@ function renderThreadChrome() {
     conversationAvatar(others),
     h('div', { class: 'title' },
       h('div', { class: 'name' }, conversationName(others),
-        t.pinned && h('span', { class: 'mark pin', title: 'Pinned' }, icon('pin')),
-        t.flagged && h('span', { class: 'mark flag', title: 'Flagged' }, icon('flag')),
         optedOut.length > 0 && h('span', { class: 'tag warn' }, 'Opted out'),
         blocked && h('span', { class: 'tag' }, 'Blocked')),
       h('div', { class: 'sub' },
         single && state.names[single] ? `${formatPhone(single)} · ` : '',
         `via ${numberLabel(t.numberId)}`)),
+    quickToggle(t, 'pinned', 'head'),
+    quickToggle(t, 'flagged', 'head'),
     single && h('button', {
       class: 'icon-btn',
       title: state.names[single] ? 'View contact' : 'Add contact',
@@ -561,16 +612,9 @@ function threadMenu(anchor) {
   const single = t.participants.length === 1 ? t.participants[0] : null;
   const blocked = single && state.blocked.has(single);
   const optedOut = single && state.optedOut.has(single);
-  const toggle = (field, path, on, offMsg, onMsg) => async () => {
-    await api(`/conversations/${t.id}/${path}`, { method: 'POST', body: { [field]: !on } });
-    t[field] = !on;
-    toast(on ? offMsg : onMsg);
-    renderThreadChrome();
-    loadConversations();
-  };
   openMenu(anchor, [
-    [t.pinned ? 'Unpin' : 'Pin to top', toggle('pinned', 'pin', t.pinned, 'Unpinned', 'Pinned to the top')],
-    [t.flagged ? 'Remove flag' : 'Flag as important', toggle('flagged', 'flag', t.flagged, 'Flag removed', 'Flagged')],
+    [t.pinned ? 'Unpin' : 'Pin to top', () => setToggle(t, 'pinned')],
+    [t.flagged ? 'Remove flag' : 'Flag as important', () => setToggle(t, 'flagged')],
     ['Mark unread', async () => {
       await api(`/conversations/${t.id}/unread`, { method: 'POST' });
       state.thread = null;

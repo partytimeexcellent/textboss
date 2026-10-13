@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
+import { applyPendingRestore } from './backup.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
+applyPendingRestore(config.dataDir);
 
 export const db = new DatabaseSync(path.join(config.dataDir, 'textboss.db'));
 

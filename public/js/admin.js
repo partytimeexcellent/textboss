@@ -12,6 +12,7 @@ const TABS = [
   ['users', 'Users'],
   ['contacts', 'Contacts & import'],
   ['blocked', 'Blocked'],
+  ['backup', 'Backup'],
 ];
 
 // A titled card: heading, one-line description, then content
@@ -39,7 +40,7 @@ export async function renderAdmin() {
     body);
   fill(body, h('div', { class: 'hint' }, 'Loading…'));
   try {
-    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsers, contacts: renderContactsAdmin, blocked: renderBlocked }[section] ?? renderBulkvs;
+    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsers, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderBulkvs;
     const content = await render();
     if (route().view !== 'admin' || route().section !== section) return; // navigated away meanwhile
     fill(body, content);
@@ -435,4 +436,76 @@ async function renderBlocked() {
               renderAdmin();
             } }, 'Unblock'))))))))
       : h('p', { class: 'empty-note' }, 'No blocked numbers.'));
+}
+
+// ---------- Backup ----------
+
+async function waitForRestart(statusEl) {
+  const started = Date.now();
+  // Wait for the server to go down, then come back up
+  await new Promise((r) => setTimeout(r, 2000));
+  while (Date.now() - started < 120_000) {
+    try {
+      const res = await fetch('/api/setup', { cache: 'no-store' });
+      if (res.ok) {
+        fill(statusEl, h('span', { class: 'ok' }, '✓ Restore complete. Reloading…'));
+        setTimeout(() => location.assign('/'), 1200);
+        return;
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  fill(statusEl, h('span', { class: 'bad' },
+    'The server has not come back yet. If you are not using Docker, start TextBoss again; the restore finishes as it starts.'));
+}
+
+async function renderBackup() {
+  const download = card('Download a backup',
+    'One file with everything: messages, contacts, lists, canned responses, users, settings (including saved BulkVS credentials) and attachments.',
+    h('div', { class: 'callout warn' }, icon('warning'),
+      h('div', {}, h('strong', {}, 'This file contains patient information and passwords. '),
+        'Store it somewhere private and delete copies you no longer need.')),
+    h('div', { class: 'card-actions' },
+      h('a', { class: 'btn primary', href: '/api/admin/backup', download: '' }, icon('download'), 'Download backup')),
+    h('p', { class: 'hint' }, 'The backup is taken while TextBoss keeps running; there is no need to stop it first.'));
+
+  const status = h('div', { class: 'test-result', role: 'status' });
+  const fileInput = h('input', { type: 'file', accept: '.gz,.tgz,application/gzip', hidden: true });
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files[0];
+    fileInput.value = '';
+    if (!f) return;
+    const ok = await confirmDialog(
+      'Replace all data with this backup?',
+      `Everything currently in TextBoss on this server will be replaced with the contents of ${f.name}. The current data is kept in a "pre-restore" folder on the server in case you need it back. Everyone will need to sign in again with the accounts from the backup.`,
+      'Restore', { danger: true });
+    if (!ok) return;
+    fill(status, h('span', { class: 'hint' }, `Uploading ${f.name}…`));
+    try {
+      const r = await api('/admin/restore', { method: 'POST', raw: f, headers: { 'Content-Type': 'application/gzip' } });
+      const c = r.manifest.counts ?? {};
+      fill(status, h('span', { class: 'hint' },
+        `Backup from ${new Date(r.manifest.createdAt).toLocaleString()} accepted (${c.conversations ?? 0} conversations, ${c.messages ?? 0} messages, ${r.manifest.mediaRestored} attachments). Restarting the server…`));
+      waitForRestart(status);
+    } catch (err) {
+      fill(status, h('span', { class: 'bad' }, '✕ ', err.message));
+    }
+  });
+
+  const restore = card('Restore from a backup',
+    'Upload a backup file to replace everything on this server with it. Use this to move TextBoss to a new server, or to undo a mistake.',
+    h('div', { class: 'card-actions' }, h('button', { class: 'btn danger', onclick: () => fileInput.click() }, 'Choose backup file…'), fileInput),
+    status,
+    h('p', { class: 'hint' }, 'TextBoss restarts to finish the restore. With Docker that happens automatically within a few seconds.'));
+
+  const move = card('Moving to a new server', null,
+    h('ol', { class: 'steps' },
+      h('li', {}, 'Here: ', h('strong', {}, 'Download backup'), '.'),
+      h('li', {}, 'On the new server, install TextBoss as in the README and copy over your ', h('code', {}, '.env'),
+        '. Keep the same ', h('code', {}, 'WEBHOOK_SECRET'), ' so the BulkVS webhook address still works, and update ', h('code', {}, 'PUBLIC_URL'), ' if the address changes.'),
+      h('li', {}, 'Open the new server and create a temporary admin account (it is replaced by the restore).'),
+      h('li', {}, 'Go to Admin settings → Backup → ', h('strong', {}, 'Restore from a backup'), ' and choose the file.'),
+      h('li', {}, 'If the web address changed, update the Message URL in BulkVS (Messaging → Messaging Webhooks) to the new one shown on the BulkVS tab.')));
+
+  return [download, restore, move];
 }

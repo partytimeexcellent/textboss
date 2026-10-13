@@ -33,6 +33,7 @@ import { parseContactFile, upsertContacts, logImport } from './contacts.js';
 import { router as contactsRouter } from './routes/contacts.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
+import { backupStream, stageRestore } from './backup.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mediaDir = path.join(config.dataDir, 'media');
@@ -518,6 +519,34 @@ admin.patch('/numbers/:id', (req, res) => {
 admin.delete('/numbers/:id', (req, res) => {
   db.prepare('DELETE FROM numbers WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
+});
+
+// ----- Backup and restore -----
+
+admin.get('/backup', (req, res) => {
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  res.setHeader('Content-Type', 'application/gzip');
+  res.setHeader('Content-Disposition', `attachment; filename="textboss-backup-${stamp}.tar.gz"`);
+  backupStream(db, config.dataDir, { createdBy: req.user.username })
+    .on('error', (err) => {
+      console.error('backup failed', err);
+      res.destroy(err);
+    })
+    .pipe(res);
+});
+
+admin.post('/restore', express.raw({ type: () => true, limit: '2gb' }), (req, res) => {
+  if (!req.body?.length) fail(400, 'Choose a backup file');
+  let manifest;
+  try {
+    manifest = stageRestore(req.body, config.dataDir);
+  } catch (err) {
+    fail(400, err.message);
+  }
+  res.json({ ok: true, manifest });
+  // Exit so the restore is applied on startup. Docker's restart policy brings the app back.
+  console.log('Backup staged for restore; restarting.');
+  setTimeout(() => process.exit(0), 800);
 });
 
 // ----- Provider (BulkVS) credentials -----

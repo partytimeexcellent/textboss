@@ -2,7 +2,7 @@
 
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
-- **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, delivery status, and who on the team sent each message. Per-conversation menu: pin to top, flag as important, mark unread, archive, opt out/in, block sender, delete history. Pins and flags are shared by the team.
+- **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, delivery status, and who on the team sent each message. Pin and flag from the list (hover a row) or the conversation header; the ⋮ menu also has mark unread, archive, opt out/in, block sender, delete history. Pins and flags are shared by the team.
 - **Contacts:** first/last name, mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
 - **Opt-out:** applies to the phone number. Texting an opted-out number brings up a warning you must confirm by typing SEND, and the server enforces it. Replies of STOP, UNSUBSCRIBE, etc. opt out automatically, and START opts back in.
 - **Blocked senders:** their texts are dropped. Manage them in Admin settings.
@@ -40,11 +40,22 @@ This runs the app on the `PORT` from `.env` (default 3000). Put your reverse pro
 
 With no reverse proxy, run `docker compose --profile caddy up -d --build` instead. That also starts Caddy, which gets a Let's Encrypt certificate for `DOMAIN`. It needs a DNS record pointing at the server and ports 80/443 open.
 
-Data (database and uploaded media) lives in the `textboss-data` volume. To update, pull the new code and run the same `up` command again. To back up:
+Data (database and uploaded media) lives in the `textboss-data` volume. To update, pull the new code and run the same `up` command again.
 
-```bash
-docker compose cp app:/app/data ./backup-$(date +%F)
-```
+### Backup, restore and moving servers
+
+**Admin settings → Backup → Download backup** gives you one `.tar.gz` file with everything: messages, contacts, users, settings and attachments. It's taken while the app keeps running. **Restore from a backup** on another TextBoss server replaces its data with the file. The app restarts to finish (Docker does this automatically), and the data it replaced is kept in `pre-restore-<date>/` inside the data volume.
+
+To move servers:
+1. Download a backup.
+2. Install TextBoss on the new server with the same `.env`. Keep `WEBHOOK_SECRET` so the BulkVS webhook address still works.
+3. Create a temporary admin on the new server.
+4. Restore the backup.
+5. Update the BulkVS Message URL if the domain changed.
+
+Backups contain patient data and saved credentials, so store them privately.
+
+From the command line, `docker compose cp app:/app/data ./backup-$(date +%F)` copies the raw data folder. Stop the app first so the database copy is consistent.
 
 Whatever proxy you use, it must not buffer `/api/events` (server-sent events), or live updates will stall.
 
@@ -113,6 +124,7 @@ src/routes/importApi.js  API-key contact import (/api/v1/contacts)
 src/messaging.js         Inbound (STOP/START, blocking, auto-replies), outbound, receipts, bulk queue
 src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
+src/backup.js            Backup download, restore staging and swap-in at startup
 src/bulkvs.js            All BulkVS-specific code (send, connection test, webhook parsing)
 src/provider.js          BulkVS credentials (admin settings, then .env)
 src/db.js                SQLite schema, migrations and access helpers

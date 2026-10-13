@@ -423,13 +423,42 @@ details > summary { cursor: pointer; }
 }
 .filter-chips button:hover { color: var(--text); }
 .filter-chips button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-.conv .meta-top { display: inline-flex; align-items: center; gap: 4px; }
-.mark { display: inline-grid; place-items: center; vertical-align: -2px; margin-left: 4px; }
-.mark svg { width: 14px; height: 14px; }
-.mark.pin { color: var(--text-muted); }
-.mark.flag { color: var(--highlight); }
-.mark.flag svg { fill: currentColor; }
 .conv.flagged { box-shadow: inset 3px 0 0 var(--highlight); }
+.conv:not(.contact-row) { grid-template-columns: minmax(0, 1fr) auto; }
+.conv-link { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; align-items: center; color: inherit; text-decoration: none; min-width: 0; }
+.conv .meta { align-self: stretch; align-content: space-between; }
+.meta-bottom { display: flex; align-items: center; justify-content: flex-end; gap: 1px; min-height: 22px; }
+
+/* Pin / flag toggles: active ones always show; inactive ones appear on hover
+   (or faintly on touch screens, which have no hover) */
+.quick {
+  border: 0; background: none; padding: 0; width: 24px; height: 22px; border-radius: 6px;
+  display: inline-grid; place-items: center; color: var(--text-muted); opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+.quick svg { width: 15px; height: 15px; }
+.quick:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+.conv:hover .quick, .conv:focus-within .quick, .quick:focus-visible, .quick.on { opacity: 1; }
+.quick.pin.on { color: var(--link); }
+.quick.pin.on svg { fill: currentColor; }
+.quick.flag.on { color: var(--highlight); }
+.quick.flag.on svg { fill: currentColor; }
+@media (hover: none) { .quick { opacity: .4; } .quick.on { opacity: 1; } }
+.quick.head { width: 36px; height: 36px; opacity: 1; border-radius: 8px; }
+.quick.head svg { width: 19px; height: 19px; }
+
+/* New message button */
+.new-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 13px 0 10px;
+  border: 0; border-radius: 999px; font-weight: 700; font-size: 14px;
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--highlight)));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: transform .12s, box-shadow .12s, filter .12s;
+}
+.new-btn svg { width: 19px; height: 19px; }
+.new-btn:hover { filter: brightness(1.07); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 45%, transparent); transform: translateY(-1px); }
+.new-btn:active { transform: translateY(0); }
 
 /* ---------- Composer tools, emoji, downloads ---------- */
 .composer-tools { display: flex; flex: none; }
@@ -575,3 +604,9 @@ details > summary { cursor: pointer; }
 }
 .table code { white-space: nowrap; }
 dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.callout { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; font-size: 14px; }
+.callout svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.callout.warn { background: var(--warn-bg); color: var(--warn-fg); }
+a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
+a.btn.primary { color: var(--accent-text); }
+.btn svg { width: 16px; height: 16px; }
