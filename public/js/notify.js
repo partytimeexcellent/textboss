@@ -11,6 +11,36 @@ const isStandalone = () => matchMedia('(display-mode: standalone)').matches || n
 
 let registration = null;
 
+class BlockedError extends Error {}
+
+// Where to re-allow notifications, for this device and browser
+function unblockSteps() {
+  const ua = navigator.userAgent;
+  const chrome = /Chrome|CriOS|Edg\//.test(ua) && !/OPR\//.test(ua);
+  const host = location.host;
+  if (isIos()) {
+    return ['Open the iPhone/iPad Settings app → Notifications → TextBoss.', 'Turn on Allow Notifications, then come back and tap Check again.'];
+  }
+  if (/Android/.test(ua)) {
+    return [`In the browser, tap the icon left of ${host} → Permissions (or Site settings) → Notifications → Allow.`,
+      'Also check Android Settings → Apps → your browser (or TextBoss) → Notifications is on.'];
+  }
+  if (navigator.platform === 'MacIntel') {
+    if (isStandalone()) {
+      return ['Open System Settings → Notifications → TextBoss and turn on Allow notifications.',
+        "If TextBoss isn't listed there, quit TextBoss, remove it from the Dock, add it again from Safari (File → Add to Dock), and turn notifications on when it first asks."];
+    }
+    if (chrome) {
+      return [`Click the icon left of ${host} in the address bar → Site settings → Notifications → Allow.`,
+        'Also open System Settings → Notifications → Google Chrome and turn on Allow notifications.'];
+    }
+    return [`In Safari choose Safari → Settings → Websites → Notifications, and set ${host} to Allow (or remove it so Safari asks again).`,
+      'Also open System Settings → Notifications → Safari and turn on Allow notifications.'];
+  }
+  return [`Click the icon left of ${host} in the address bar → Site settings → Notifications → Allow.`,
+    "Also make sure your computer's notification settings allow your browser."];
+}
+
 // The active service worker registration, registering it if needed.
 // Resolves to null (never hangs) if this browser refuses service workers.
 async function getRegistration() {
@@ -61,11 +91,8 @@ function keyBytes(base64) {
 async function subscribe(preview) {
   // Must run straight from a tap on iOS
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
-    throw new Error(permission === 'denied'
-      ? 'Notifications are blocked for TextBoss. Turn them on in your device settings, then try again.'
-      : 'Notification permission was not granted');
-  }
+  if (permission === 'denied') throw new BlockedError('Notifications are blocked for TextBoss on this device.');
+  if (permission !== 'granted') throw new Error('Notification permission was not granted. Tap Turn on notifications and choose Allow.');
   if (!(await getRegistration())) throw new Error('This browser could not start background notifications. Try reloading the app.');
   const { publicKey } = await api('/push/key');
   let sub = await registration.pushManager.getSubscription();
@@ -87,6 +114,15 @@ async function unsubscribe() {
 export function updateBadge(count) {
   if (!('setAppBadge' in navigator)) return;
   (count > 0 ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
+}
+
+function blockedHelp(redraw) {
+  return h('div', { class: 'callout warn blocked-help' },
+    h('div', {},
+      h('strong', {}, 'Notifications are blocked for TextBoss here. '),
+      'The device refused without asking, so they have to be allowed in its settings:',
+      h('ol', { class: 'steps' }, unblockSteps().map((step) => h('li', {}, step))),
+      h('button', { type: 'button', class: 'btn', onclick: redraw }, 'Check again')));
 }
 
 export async function notificationsDialog() {
@@ -125,6 +161,7 @@ export async function notificationsDialog() {
       try {
         await fn();
       } catch (err) {
+        if (err instanceof BlockedError) return draw(); // redraw with the unblock steps
         fill(result, h('span', { class: 'bad' }, '✕ ', err.message));
       }
       e.target.disabled = false;
@@ -133,8 +170,9 @@ export async function notificationsDialog() {
     fill(body,
       h('div', { class: 'status-row' },
         on ? h('span', { class: 'pill ok' }, 'On for this device')
-          : Notification.permission === 'denied' ? h('span', { class: 'pill warn' }, 'Blocked in device settings')
+          : Notification.permission === 'denied' ? h('span', { class: 'pill warn' }, 'Blocked on this device')
           : h('span', { class: 'pill' }, 'Off for this device')),
+      Notification.permission === 'denied' && !on && blockedHelp(draw),
       h('p', { class: 'dialog-text' }, 'Get an alert and a badge on the app icon when a text arrives, even when TextBoss is closed. Each phone or computer is set up separately.'),
       // In a Mac browser tab, alerts show the browser's icon and the web address
       isMacBrowserTab() && h('p', { class: 'hint' },

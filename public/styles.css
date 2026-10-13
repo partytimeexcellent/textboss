@@ -627,3 +627,7 @@ a.btn.primary { color: var(--accent-text); }
 .table tr.inactive td:not(:first-child) { opacity: .5; }
 .table td input.switch { min-width: 0; width: 40px; }
 @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
+.blocked-help .steps { margin: 8px 0 10px; color: inherit; }
+.blocked-help .btn { color: var(--text); }
+.notify-body { display: grid; gap: 12px; }
+.notify-body .dialog-text, .notify-body .hint { margin: 0; }
