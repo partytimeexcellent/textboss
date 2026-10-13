@@ -10,7 +10,7 @@ const TABS = [
   ['bulkvs', 'BulkVS'],
   ['numbers', 'Numbers'],
   ['users', 'Users'],
-  ['contacts', 'Contacts & import'],
+  ['contacts', 'Contacts & Import'],
   ['blocked', 'Blocked'],
   ['backup', 'Backup'],
 ];
