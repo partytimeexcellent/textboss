@@ -80,7 +80,8 @@ async function renderBulkvs() {
       field('API username', username),
       field('API password / token', h('div', { class: 'input-with-btn' }, password, reveal)),
     ),
-    provider.source === 'env' && h('p', { class: 'hint' }, 'Saving here overrides the values in .env.'),
+    h('p', { class: 'hint' }, 'Leave a field blank to keep the current value. The saved token is never shown.',
+      provider.source === 'env' ? ' Saving here overrides the values in .env.' : ''),
     h('div', { class: 'card-actions' },
       h('button', { class: 'btn primary', onclick: async () => {
         try {
@@ -99,6 +100,14 @@ async function renderBulkvs() {
         fill(result, h('span', { class: 'hint' }, 'Testing…'));
         showResult(await api('/admin/provider/test', { method: 'POST', body: { username: username.value, password: password.value } }));
       } }, 'Test connection'),
+      provider.source === 'admin' && h('button', { class: 'btn danger', onclick: async () => {
+        const fallback = provider.envConfigured ? 'TextBoss will go back to the credentials in .env.' : 'TextBoss will stop sending real texts (mock mode) until new credentials are saved.';
+        if (!(await confirmDialog('Remove saved credentials?', `The BulkVS username and token saved here will be deleted. ${fallback}`, 'Remove', { danger: true }))) return;
+        const next = await api('/admin/provider', { method: 'DELETE' });
+        state.mockMode = next.mockMode;
+        toast('Saved credentials removed');
+        renderAdmin();
+      } }, 'Remove saved credentials'),
       result),
   );
 

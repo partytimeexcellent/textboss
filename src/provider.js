@@ -8,7 +8,8 @@ export function bulkvsCredentials() {
   if (saved) {
     return {
       username: saved,
-      password: getSetting('bulkvs.password') ?? '',
+      // A username saved in the app with no saved token keeps using the .env token
+      password: getSetting('bulkvs.password') ?? config.bulkvs.password,
       apiBase: config.bulkvs.apiBase,
       source: 'admin',
     };

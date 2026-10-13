@@ -653,24 +653,29 @@ function providerStatus() {
     passwordSet: !!creds.password,
     passwordHint: creds.password ? `…${creds.password.slice(-4)}` : '',
     mockMode: isMockMode(),
+    envConfigured: !!config.bulkvs.username,
   };
 }
 
 admin.get('/provider', (_req, res) => res.json(providerStatus()));
 
+// Blank fields mean "keep what's in use now" (saved in the app or from .env).
+// Everything is validated before anything is written.
 admin.put('/provider', (req, res) => {
-  const username = String(req.body?.username ?? '').trim();
+  const current = bulkvsCredentials();
+  const username = String(req.body?.username ?? '').trim() || current.username;
   const password = String(req.body?.password ?? '').trim();
-  if (!username) {
-    // Clearing the username falls back to .env (or mock mode)
-    setSetting('bulkvs.username', null);
-    setSetting('bulkvs.password', null);
-  } else {
-    setSetting('bulkvs.username', username);
-    // Blank password = keep the saved one
-    if (password) setSetting('bulkvs.password', password);
-    else if (!getSetting('bulkvs.password')) fail(400, 'Enter the API password/token');
-  }
+  if (!username) fail(400, 'Enter the API username');
+  if (!password && !current.password) fail(400, 'Enter the API password/token');
+  setSetting('bulkvs.username', username);
+  if (password) setSetting('bulkvs.password', password);
+  res.json(providerStatus());
+});
+
+// Deliberately forget credentials saved in the app (falls back to .env, or mock mode)
+admin.delete('/provider', (_req, res) => {
+  setSetting('bulkvs.username', null);
+  setSetting('bulkvs.password', null);
   res.json(providerStatus());
 });
 
