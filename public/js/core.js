@@ -101,6 +101,7 @@ export const state = {
   filterNumber: store('tb.number') || 'all',
   search: '',
   convFilter: '', // '' | 'unread' | 'flagged' | 'archived'
+  pushActive: false, // this device gets push notifications from the service worker
   theme: null,
   conversations: [],
   thread: null,

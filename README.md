@@ -12,7 +12,8 @@ A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple num
 - **Appearance:** each user picks Light / Dark / Auto and a color theme (presets or custom accent and highlight colors), saved to their account.
 - **Active numbers:** untick numbers you don't use in Admin → Numbers and they disappear from the app; with one active number the number selector is hidden.
 - **Admin settings** in tabs: BulkVS connection (enter and test credentials in the app; these override `.env`), webhook setup and log, numbers, users, contact import and API keys, blocked numbers.
-- Live updates across all signed-in users (server-sent events), browser notifications, and installable on a phone (PWA).
+- **Push notifications:** alerts and an unread badge on the app icon, even when TextBoss is closed. Each device opts in from ⋮ → Notifications, with an option to hide message text on the lock screen. On iPhone and iPad this needs iOS 16.4+ and the app added to the Home Screen from Safari.
+- Live updates across all signed-in users (server-sent events), and installable on a phone (PWA).
 
 Stack: Node 22.13+ with the built-in `node:sqlite`, Express 5, and plain JavaScript in the browser, with no build step.
 
@@ -126,6 +127,8 @@ src/messaging.js         Inbound (STOP/START, blocking, auto-replies), outbound,
 src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
 src/backup.js            Backup download, restore staging and swap-in at startup
+src/push.js              Web Push (VAPID keys, subscriptions, sending, badge counts)
+public/sw.js             Service worker: shows push notifications, sets the app badge
 src/bulkvs.js            All BulkVS-specific code (send, connection test, webhook parsing)
 src/provider.js          BulkVS credentials (admin settings, then .env)
 src/db.js                SQLite schema, migrations and access helpers

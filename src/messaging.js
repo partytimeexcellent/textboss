@@ -11,7 +11,8 @@ import {
 import { publish } from './events.js';
 import { isMockMode } from './provider.js';
 import { normalizePhone, participantsKey } from './phone.js';
-import { setOptOut } from './contacts.js';
+import { setOptOut, fullName } from './contacts.js';
+import { pushToUsers } from './push.js';
 import * as bulkvs from './bulkvs.js';
 
 const MESSAGE_SELECT = `
@@ -94,6 +95,7 @@ export function recordInbound({ from, to, body, media }) {
     return { conversation, id };
   });
   announce(conversation, getMessage(id));
+  notifyDevices(conversation, number, sender, body, media).catch((err) => console.warn('push failed', err.message));
 
   const text = String(body ?? '').trim();
   if (STOP_WORDS.test(text)) {
@@ -107,6 +109,21 @@ export function recordInbound({ from, to, body, media }) {
   }
   return { ok: true, messageId: id };
 }
+
+// Lock-screen alert + app badge on every device that turned notifications on
+async function notifyDevices(conversation, number, sender, body, media) {
+  const contact = db.prepare('SELECT first_name, last_name, nickname FROM contacts WHERE phone = ? ORDER BY id LIMIT 1').get(sender);
+  const name = (contact && fullName(contact)) || formatPhone(sender);
+  const text = String(body ?? '').trim() || (media?.length ? 'Sent an attachment' : '');
+  await pushToUsers(userIdsForNumber(number.id), (_user, preview) => ({
+    title: preview ? name : 'TextBoss',
+    body: preview ? text : 'New message',
+    url: `/#/c/${conversation.id}`,
+    tag: `conv-${conversation.id}`,
+  }));
+}
+
+const formatPhone = (p) => (/^\d{10}$/.test(p) ? `(${p.slice(0, 3)}) ${p.slice(3, 6)}-${p.slice(6)}` : p);
 
 function firstContactFor(phone) {
   return db.prepare('SELECT first_name, last_name, nickname FROM contacts WHERE phone = ? ORDER BY id LIMIT 1').get(phone);

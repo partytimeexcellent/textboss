@@ -34,6 +34,7 @@ import { router as contactsRouter } from './routes/contacts.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
+import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, pushToUsers, unreadTotal } from './push.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const mediaDir = path.join(config.dataDir, 'media');
@@ -180,6 +181,41 @@ api.post('/me/password', (req, res) => {
 });
 
 api.get('/events', subscribe);
+
+// ----- Push notifications (per device) -----
+
+api.get('/push/key', (_req, res) => res.json({ publicKey: vapidPublicKey() }));
+
+api.post('/push/subscribe', (req, res) => {
+  try {
+    saveSubscription(req.user.id, req.body?.subscription, { preview: req.body?.preview !== false, userAgent: req.headers['user-agent'] });
+  } catch (err) {
+    fail(400, err.message);
+  }
+  res.json({ ok: true });
+});
+
+api.post('/push/unsubscribe', (req, res) => {
+  if (req.body?.endpoint) removeSubscription(String(req.body.endpoint));
+  res.json({ ok: true });
+});
+
+api.post('/push/status', (req, res) => res.json(subscriptionStatus(String(req.body?.endpoint ?? ''))));
+
+api.post('/push/test', async (req, res) => {
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(req.user.id);
+  if (!n) fail(400, 'Notifications are not turned on for any of your devices yet');
+  await pushToUsers([req.user.id], (_u, preview) => ({
+    title: preview ? 'TextBoss test' : 'TextBoss',
+    body: preview ? 'Notifications are working on this device.' : 'New message',
+    url: '/#/',
+    tag: 'test',
+  }));
+  res.json({ ok: true, devices: n });
+});
+
+// Total unread for the app-icon badge
+api.get('/badge', (req, res) => res.json({ unread: unreadTotal(req.user) }));
 
 // ----- Conversations -----
 

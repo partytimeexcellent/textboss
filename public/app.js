@@ -9,6 +9,7 @@ import { renderContactsSidebar, renderContactsMain, refreshContacts, onBroadcast
 import { renderCanned } from './js/canned.js';
 import { renderAdmin } from './js/admin.js';
 import { applyTheme, themePicker } from './js/theme.js';
+import { initPush, notificationsDialog, updateBadge } from './js/notify.js';
 
 const app = document.getElementById('app');
 
@@ -24,6 +25,7 @@ async function boot() {
     state.numbers = me.numbers;
     state.mockMode = me.mockMode;
     state.theme = applyTheme(me.theme);
+    initPush();
   } catch {
     state.me = null;
   }
@@ -167,8 +169,7 @@ function openUserMenu(anchor) {
     ['Canned responses', () => (location.hash = '#/canned')],
     ['Appearance', () => themePicker(state.theme, (t) => (state.theme = t))],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
-    'Notification' in window && Notification.permission === 'default' &&
-      ['Enable notifications', () => Notification.requestPermission()],
+    ['Notifications', notificationsDialog],
     ['Change password', changePasswordDialog],
     ['Sign out', async () => {
       await api('/logout', { method: 'POST' });
@@ -243,7 +244,8 @@ function onMessageEvent(msg) {
 }
 
 function notify(msg) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  // Devices with push get the alert from the service worker instead
+  if (state.pushActive || !('Notification' in window) || Notification.permission !== 'granted') return;
   const n = new Notification(nameFor(msg.from), {
     body: msg.body || (msg.media.length ? 'Attachment' : ''),
     tag: `conv-${msg.conversationId}`,
@@ -331,6 +333,8 @@ async function loadConversations() {
     return;
   }
   renderList();
+  // App-icon badge: total unread, regardless of the current filter
+  api('/badge').then((b) => updateBadge(b.unread)).catch(() => {});
 }
 
 function renderList() {

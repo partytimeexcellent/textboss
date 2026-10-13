@@ -195,6 +195,19 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  -- Web Push subscriptions, one per device/browser that turned notifications on
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint   TEXT NOT NULL UNIQUE,
+    keys       TEXT NOT NULL,
+    preview    INTEGER NOT NULL DEFAULT 1,
+    user_agent TEXT,
+    created_at INTEGER NOT NULL
+  );
+`);
+
 // Columns added after the first release
 function addColumn(table, column, definition) {
   if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column)) {
