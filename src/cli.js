@@ -55,7 +55,7 @@ switch (command) {
     const user = findUser(username);
     resetMfa(user.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-    console.log(`Two-factor sign-in removed for "${user.username}" (authenticator app, passkeys and backup codes).`);
+    console.log(`Two-factor sign-in removed for "${user.username}" (authenticator app and passkeys).`);
     console.log('They can sign in with their password and set it up again under ⋮ → Security.');
     break;
   }

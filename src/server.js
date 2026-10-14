@@ -37,6 +37,7 @@ import { router as contactsRouter } from './routes/contacts.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
+import * as email from './email.js';
 import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, pushToUsers, unreadTotal } from './push.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -144,7 +145,7 @@ api.get('/version', (_req, res) => {
 
 api.get('/setup', (_req, res) => {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
-  res.json({ needed: n === 0, mockMode: isMockMode(), passkeys: mfa.passkeysAvailable(), origin: new URL(config.publicUrl).origin });
+  res.json({ needed: n === 0, mockMode: isMockMode(), passkeys: mfa.passkeysAvailable(), origin: new URL(config.publicUrl).origin, email: email.emailConfigured() });
 });
 
 api.post('/setup', (req, res) => {
@@ -178,7 +179,7 @@ api.post('/login', (req, res) => {
         token: mfa.createPendingLogin(user.id),
         totp: status.totp,
         passkey: status.passkeys > 0 && mfa.passkeysAvailable(),
-        backup: status.backupLeft > 0,
+        email: user.email && email.emailConfigured() ? email.maskEmail(user.email) : null,
       },
     });
   }
@@ -186,20 +187,81 @@ api.post('/login', (req, res) => {
   res.json({ ok: true });
 });
 
-// Second step: a code from the authenticator app, or a backup code
+// Second step, emailed code: sends it
+api.post('/login/email', async (req, res) => {
+  const p = mfa.pendingLogin(req.body?.token);
+  if (!p) fail(401, 'Your sign-in expired. Enter your password again.');
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(p.userId);
+  try {
+    await email.sendEmailCode(user, 'login');
+  } catch (err) {
+    console.error('sign-in code email failed', err.message);
+    fail(502, 'The email could not be sent. Ask your administrator to check Admin settings → Email.');
+  }
+  res.json({ ok: true, sentTo: email.maskEmail(user.email) });
+});
+
+// Second step: a code from the authenticator app or from the email
 api.post('/login/mfa', (req, res) => {
   const p = mfa.pendingLogin(req.body?.token);
   if (!p) fail(401, 'Your sign-in expired. Enter your password again.');
   assertNotLocked(req, null, [mfaKey(p.userId)]);
-  const used = mfa.verifySecondFactorCode(p.userId, req.body?.code);
-  if (!used) {
+  const ok = req.body?.method === 'email'
+    ? email.checkEmailCode(p.userId, 'login', req.body?.code)
+    : mfa.verifyTotpCode(p.userId, req.body?.code);
+  if (!ok) {
     recordFailure(req, null, [mfaKey(p.userId)]);
-    fail(401, 'That code is not right. Check the time on your phone, or use a backup code.');
+    fail(401, req.body?.method === 'email'
+      ? 'That code is not right or has expired. Check the latest email, or send a new code.'
+      : 'That code is not right. Check the time on your phone, or email yourself a code instead.');
   }
   mfa.endPendingLogin(req.body.token);
   createSession(res, p.userId);
-  const left = used === 'backup' ? mfa.mfaStatus(p.userId).backupLeft : null;
-  res.json({ ok: true, backupLeft: left });
+  res.json({ ok: true });
+});
+
+// ----- Forgot password: a code is emailed, then code + new password -----
+
+const findLogin = (login) => {
+  const v = String(login ?? '').trim();
+  if (!v) return null;
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(v)
+    ?? (email.validEmail(v) ? db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE AND email != ''").get(v) : null);
+};
+
+api.post('/password/forgot', async (req, res) => {
+  if (!email.emailConfigured()) fail(400, 'Password reset by email is not set up. Ask your administrator to reset it.');
+  assertNotLocked(req, null);
+  const user = findLogin(req.body?.login);
+  // Same answer whether or not the account exists, so this can't be used to find usernames
+  if (user?.email) {
+    try {
+      await email.sendEmailCode(user, 'reset');
+    } catch (err) {
+      console.error('reset email failed', err.message);
+      fail(502, 'The email could not be sent. Ask your administrator to check Admin settings → Email.');
+    }
+  }
+  recordFailure(req, null); // every request counts toward the per-IP limit, so inboxes can't be flooded
+  res.json({ ok: true });
+});
+
+api.post('/password/reset', (req, res) => {
+  const user = findLogin(req.body?.login);
+  const keys = user ? [mfaKey(user.id)] : [];
+  assertNotLocked(req, null, keys);
+  const { password } = req.body ?? {};
+  if (!password || String(password).length < 8) fail(400, 'New password must be at least 8 characters');
+  if (!user || !email.checkEmailCode(user.id, 'reset', req.body?.code)) {
+    recordFailure(req, null, keys);
+    fail(400, 'That code is not right or has expired. Check the latest email, or send a new code.');
+  }
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), user.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id); // sign out everywhere else
+  recordSuccess(req, user.username);
+  // Proving the email is the same as the emailed sign-in code, so sign straight in
+  createSession(res, user.id);
+  res.json({ ok: true });
 });
 
 // Passkey sign-in: after the password (token) or on its own (passwordless)
@@ -234,7 +296,7 @@ api.post('/logout', (req, res) => {
 api.use(requireUser);
 
 // When the admin requires 2FA, people without it can only reach setup
-const SETUP_PATHS = /^\/(me(\/(security|totp\/.*|passkeys.*|backup-codes))?|logout|version|setup)$/;
+const SETUP_PATHS = /^\/(me(\/(security|totp\/.*|passkeys.*|email))?|logout|version|setup)$/;
 api.use((req, res, next) => {
   if (mfa.mfaRequired() && !mfa.mfaStatus(req.user.id).enabled && !SETUP_PATHS.test(req.path)) {
     fail(403, 'Your administrator requires two-factor sign-in. Set it up to continue.', { code: 'mfa_setup_required' });
@@ -259,6 +321,8 @@ api.get('/me/security', (req, res) => {
     passkeysAvailable: mfa.passkeysAvailable(),
     origin: new URL(config.publicUrl).origin,
     passkeyList: mfa.listPasskeys(req.user.id),
+    email: db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id).email,
+    emailConfigured: email.emailConfigured(),
     sessions: db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?').get(req.user.id, Date.now()).n,
   });
 });
@@ -267,9 +331,7 @@ api.post('/me/totp/setup', async (req, res) => res.json(await mfa.startTotpSetup
 
 api.post('/me/totp/enable', (req, res) => {
   if (!mfa.finishTotpSetup(req.user.id, req.body?.code)) fail(400, 'That code is not right. Enter the current 6-digit code from the app.');
-  // First method: hand out backup codes too
-  const codes = mfa.mfaStatus(req.user.id).backupLeft ? null : mfa.newBackupCodes(req.user.id);
-  res.json({ ok: true, backupCodes: codes });
+  res.json({ ok: true });
 });
 
 api.post('/me/totp/disable', (req, res) => {
@@ -280,10 +342,25 @@ api.post('/me/totp/disable', (req, res) => {
   res.json({ ok: true });
 });
 
-api.post('/me/backup-codes', (req, res) => {
+// Your email: for "Forgot password?" and emailed sign-in codes
+api.post('/me/email', (req, res) => {
   confirmPassword(req);
-  if (!mfa.mfaStatus(req.user.id).enabled) fail(400, 'Set up an authenticator app or a passkey first');
-  res.json({ codes: mfa.newBackupCodes(req.user.id) });
+  const value = String(req.body?.email ?? '').trim();
+  if (value && !email.validEmail(value)) fail(400, 'That email address doesn\'t look right');
+  if (value && db.prepare('SELECT 1 FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(value, req.user.id)) fail(409, 'Another user already has that email address');
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(value, req.user.id);
+  res.json({ ok: true, email: value });
+});
+
+api.post('/me/email/test', async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user.email) fail(400, 'Save your email address first');
+  try {
+    await email.sendMail({ to: user.email, subject: 'TextBoss test email', text: `Hi ${user.display_name},\n\nEmail from TextBoss reaches you. "Forgot password?" and emailed sign-in codes will arrive here.\n` });
+  } catch (err) {
+    fail(502, `Couldn't send: ${err.message}`);
+  }
+  res.json({ ok: true });
 });
 
 api.post('/me/passkeys/options', async (req, res) => {
@@ -294,14 +371,12 @@ api.post('/me/passkeys/options', async (req, res) => {
 
 api.post('/me/passkeys', async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  const first = !mfa.mfaStatus(req.user.id).enabled;
   try {
     await mfa.finishPasskeyRegistration(user, req.body?.response, req.body?.name);
   } catch (err) {
     fail(400, err.message);
   }
-  const codes = first && !mfa.mfaStatus(req.user.id).backupLeft ? mfa.newBackupCodes(req.user.id) : null;
-  res.json({ ok: true, backupCodes: codes });
+  res.json({ ok: true });
 });
 
 api.post('/me/passkeys/:id/remove', (req, res) => {
@@ -697,6 +772,7 @@ function userWithNumbers(u) {
     mfa: { totp: m.totp, passkeys: m.passkeys },
     id: u.id,
     username: u.username,
+    email: u.email ?? '',
     displayName: u.display_name,
     isAdmin: !!u.is_admin,
     numberIds: db.prepare('SELECT number_id FROM user_numbers WHERE user_id = ?').all(u.id).map((r) => r.number_id),
@@ -711,6 +787,35 @@ admin.post('/users/:id/reset-2fa', (req, res) => {
 });
 
 admin.get('/security', (_req, res) => res.json({ require2fa: mfa.mfaRequired() }));
+
+// ----- Email (SMTP) -----
+
+admin.get('/email', (_req, res) => res.json({ ...email.smtpSettings(), configured: email.emailConfigured() }));
+
+admin.put('/email', (req, res) => {
+  try {
+    email.saveSmtp(req.body);
+  } catch (err) {
+    fail(400, err.message);
+  }
+  res.json({ ...email.smtpSettings(), configured: email.emailConfigured() });
+});
+
+admin.delete('/email', (_req, res) => {
+  email.removeSmtp();
+  res.json({ ...email.smtpSettings(), configured: false });
+});
+
+admin.post('/email/test', async (req, res) => {
+  const to = String(req.body?.to ?? '').trim();
+  if (!email.validEmail(to)) fail(400, 'Enter an email address to send the test to');
+  try {
+    await email.sendMail({ to, subject: 'TextBoss test email', text: 'Email from TextBoss is working. Staff can now use "Forgot password?" and emailed sign-in codes.\n' });
+  } catch (err) {
+    fail(502, `Couldn't send: ${err.message}`);
+  }
+  res.json({ ok: true });
+});
 
 admin.put('/security', (req, res) => {
   if (req.body?.require2fa && !mfa.mfaStatus(req.user.id).enabled) {
@@ -734,8 +839,16 @@ admin.post('/users', (req, res) => {
     )
     .run(username.trim(), (displayName || username).trim(), hashPassword(password), isAdmin ? 1 : 0, Date.now());
   setUserNumbers(Number(lastInsertRowid), numberIds);
+  if (req.body?.email) setUserEmail(Number(lastInsertRowid), req.body.email);
   res.json(userWithNumbers(db.prepare('SELECT * FROM users WHERE id = ?').get(lastInsertRowid)));
 });
+
+function setUserEmail(userId, value) {
+  const v = String(value ?? '').trim();
+  if (v && !email.validEmail(v)) fail(400, 'That email address doesn\'t look right');
+  if (v && db.prepare('SELECT 1 FROM users WHERE email = ? COLLATE NOCASE AND id != ?').get(v, userId)) fail(409, 'Another user already has that email address');
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(v, userId);
+}
 
 function setUserNumbers(userId, numberIds) {
   db.prepare('DELETE FROM user_numbers WHERE user_id = ?').run(userId);
@@ -748,6 +861,7 @@ admin.patch('/users/:id', (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!user) fail(404, 'User not found');
   const { displayName, password, isAdmin, numberIds } = req.body ?? {};
+  if (req.body?.email != null) setUserEmail(id, req.body.email);
   if (displayName != null) db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(String(displayName).trim() || user.username, id);
   if (password) {
     if (String(password).length < 8) fail(400, 'Password must be at least 8 characters');

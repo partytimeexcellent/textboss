@@ -115,6 +115,8 @@ async function renderAuth() {
         }
       },
     }, icon('key'), 'Sign in with a passkey'),
+    !setup.needed && setup.email && h('div', { class: 'auth-links' },
+      h('button', { type: 'button', class: 'link-btn', onclick: () => renderForgot(logo, form.elements.username.value) }, 'Forgot password?')),
   );
   fill(app, h('div', { class: 'auth' }, form));
   autoFocus(form.querySelector('input'));
@@ -129,33 +131,48 @@ async function passkeySignIn(token) {
 
 function renderSecondStep(m, logo) {
   const error = h('div', { class: 'form-error' });
-  let useBackup = !m.totp;
-  const code = h('input', { type: 'text', name: 'code', required: true, autocomplete: 'one-time-code', class: 'code-input' });
-  const label = h('span', {});
-  const hint = h('p', {});
-  const toggle = h('button', { type: 'button', class: 'link-btn' });
+  const notice = h('p', { class: 'hint' });
+  // 'app': authenticator code, 'email': emailed code, null: passkey only so far
+  let mode = m.totp ? 'app' : null;
+  const code = h('input', { type: 'text', name: 'code', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '123 456', class: 'code-input' });
+  const codeLabel = h('span', {});
+  const codeSection = h('div', { class: 'code-section' });
+  const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Verify');
+  const emailBtn = m.email && h('button', { type: 'button', class: 'link-btn', onclick: () => sendEmail() });
+  const appBtn = m.totp && h('button', { type: 'button', class: 'link-btn', onclick: () => { mode = 'app'; draw(); } }, 'Use the authenticator app instead');
+
   const draw = () => {
-    label.textContent = useBackup ? 'Backup code' : '6-digit code';
-    code.inputMode = useBackup ? 'text' : 'numeric';
-    code.placeholder = useBackup ? 'xxxx-xxxx' : '123 456';
-    hint.textContent = useBackup ? 'Enter one of your saved backup codes. Each works once.' : 'Enter the code from your authenticator app.';
-    toggle.textContent = useBackup ? 'Use the authenticator app instead' : 'Use a backup code instead';
-    toggle.hidden = !(m.totp && m.backup);
+    codeSection.hidden = !mode;
+    submit.hidden = !mode;
+    codeLabel.textContent = mode === 'email' ? 'Code from the email' : '6-digit code from your authenticator app';
+    if (emailBtn) emailBtn.textContent = mode === 'email' ? 'Send a new code' : `Email me a code instead (${m.email})`;
+    if (appBtn) appBtn.hidden = mode !== 'email';
+    if (passkeyBtn) passkeyBtn.className = mode ? 'btn' : 'btn primary';
+    orLine.hidden = !(mode && passkeyBtn);
     code.value = '';
-    code.focus();
+    if (mode) autoFocus(code);
   };
-  toggle.addEventListener('click', () => {
-    useBackup = !useBackup;
-    draw();
-  });
+
+  async function sendEmail() {
+    error.textContent = '';
+    emailBtn.disabled = true;
+    try {
+      const r = await api('/login/email', { method: 'POST', body: { token: m.token } });
+      mode = 'email';
+      notice.textContent = `We emailed a code to ${r.sentTo}. It can take a minute to arrive; check spam too.`;
+      draw();
+    } catch (err) {
+      error.textContent = err.message;
+      if (/expired/.test(err.message)) setTimeout(renderAuth, 1500);
+    } finally {
+      setTimeout(() => (emailBtn.disabled = false), 5000);
+    }
+  }
 
   const finish = async (fn) => {
     error.textContent = '';
     try {
-      const r = await fn();
-      if (r?.backupLeft != null && r.backupLeft <= 2) {
-        toast(`You have ${r.backupLeft} backup code${r.backupLeft === 1 ? '' : 's'} left. Make new ones under ⋮ → Security.`);
-      }
+      await fn();
       await boot();
     } catch (err) {
       error.textContent = err.message;
@@ -163,33 +180,95 @@ function renderSecondStep(m, logo) {
     }
   };
 
+  const orLine = h('div', { class: 'auth-or' }, 'or');
   const passkeyBtn = m.passkey && h('button', {
     class: 'btn',
     type: 'button',
     onclick: () => finish(() => passkeySignIn(m.token)),
   }, icon('key'), 'Use a passkey');
 
-  const showCodes = m.totp || m.backup;
+  fill(codeSection, h('label', {}, codeLabel, code));
   const form = h('form', {
     onsubmit: (e) => {
       e.preventDefault();
-      finish(() => api('/login/mfa', { method: 'POST', body: { token: m.token, code: code.value } }));
+      finish(() => api('/login/mfa', { method: 'POST', body: { token: m.token, code: code.value, method: mode } }));
     },
   },
     logo,
     h('p', {}, 'Two-factor sign-in'),
-    showCodes && hint,
-    showCodes && h('label', {}, label, code),
+    notice,
+    codeSection,
     error,
-    showCodes && h('button', { class: 'btn primary', type: 'submit' }, 'Verify'),
-    showCodes && toggle,
-    passkeyBtn && showCodes && h('div', { class: 'auth-or' }, 'or'),
+    submit,
+    orLine,
     passkeyBtn,
-    h('button', { type: 'button', class: 'link-btn', onclick: renderAuth }, 'Back'),
+    h('div', { class: 'auth-links' },
+      appBtn,
+      emailBtn,
+      !m.email && !m.totp && h('p', { class: 'hint' }, 'Passkey saved on a different device? Ask your administrator to add your email address so you can get a code, or to reset two-factor.'),
+      h('button', { type: 'button', class: 'link-btn', onclick: renderAuth }, 'Back')),
   );
   fill(app, h('div', { class: 'auth' }, form));
-  if (showCodes) draw();
-  else passkeyBtn?.focus();
+  draw();
+  if (!mode) passkeyBtn?.focus();
+}
+
+// Forgot password: email a code, then code + new password signs you in
+function renderForgot(logo, login = '') {
+  const error = h('div', { class: 'form-error' });
+  const who = h('input', { type: 'text', name: 'login', required: true, value: login, autocomplete: 'username', placeholder: 'Username or email' });
+  const form = h('form', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      try {
+        await api('/password/forgot', { method: 'POST', body: { login: who.value } });
+        renderResetCode(logo, who.value);
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    },
+  },
+    logo,
+    h('p', {}, 'Reset your password'),
+    h('p', { class: 'hint' }, 'We\'ll email a code to the address saved on your account.'),
+    h('label', {}, 'Username or email', who),
+    error,
+    h('button', { class: 'btn primary', type: 'submit' }, 'Email me a code'),
+    h('div', { class: 'auth-links' }, h('button', { type: 'button', class: 'link-btn', onclick: renderAuth }, 'Back to sign in')));
+  fill(app, h('div', { class: 'auth' }, form));
+  autoFocus(who);
+}
+
+function renderResetCode(logo, login) {
+  const error = h('div', { class: 'form-error' });
+  const code = h('input', { type: 'text', name: 'code', required: true, inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '123 456', class: 'code-input' });
+  const pw = h('input', { type: 'password', name: 'password', required: true, minLength: 8, autocomplete: 'new-password' });
+  const form = h('form', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      try {
+        await api('/password/reset', { method: 'POST', body: { login, code: code.value, password: pw.value } });
+        toast('Password changed');
+        await boot();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    },
+  },
+    logo,
+    h('p', {}, 'Check your email'),
+    h('p', { class: 'hint' }, 'If that account has an email address, a 6-digit code is on its way. It can take a minute; check spam too. No email? Your administrator can reset your password.'),
+    h('label', {}, 'Code from the email', code),
+    h('label', {}, 'New password (8+ characters)', pw),
+    error,
+    h('button', { class: 'btn primary', type: 'submit' }, 'Change password and sign in'),
+    h('div', { class: 'auth-links' },
+      h('button', { type: 'button', class: 'link-btn', onclick: () => renderForgot(logo, login) }, 'Send a new code'),
+      h('button', { type: 'button', class: 'link-btn', onclick: renderAuth }, 'Back to sign in')));
+  fill(app, h('div', { class: 'auth' }, form));
+  autoFocus(code);
 }
 
 // The admin requires 2FA and this person has none yet

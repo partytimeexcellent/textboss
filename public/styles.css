@@ -88,7 +88,7 @@ a { color: var(--link); }
 .icon-btn:hover { background: var(--bg-hover); color: var(--text); }
 .icon-btn svg { width: 20px; height: 20px; }
 
-input[type=text], input[type=password], input[type=tel], input[type=search], input[type=email], input[type=date], select, textarea {
+input[type=text], input[type=number], input[type=password], input[type=tel], input[type=search], input[type=email], input[type=date], select, textarea {
   border: 1px solid var(--border);
   background: var(--bg-input);
   border-radius: 8px;
@@ -698,3 +698,7 @@ a.btn.primary { color: var(--accent-text); }
 /* Outgoing texts sent by another staff member: tagged with their name and shaded a little differently */
 .msg.out.other .bubble { background: color-mix(in oklab, var(--bubble-out) 80%, var(--text)); }
 .msg.out .sender { text-align: right; }
+.auth-links { display: grid; justify-items: center; gap: 10px; text-align: center; }
+.code-section[hidden] { display: none; }
+.code-section label { display: grid; gap: 6px; }
+.auth-or[hidden] { display: none; }

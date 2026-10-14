@@ -1,5 +1,6 @@
-// Two-factor sign-in: authenticator-app codes (TOTP, RFC 6238), one-time
-// backup codes, and passkeys / security keys (WebAuthn, via SimpleWebAuthn).
+// Two-factor sign-in: authenticator-app codes (TOTP, RFC 6238) and passkeys /
+// security keys (WebAuthn, via SimpleWebAuthn). The emailed fallback code lives
+// in email.js.
 
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
@@ -13,12 +14,7 @@ import { db, getSetting } from './db.js';
 import { config } from './config.js';
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS backup_codes (
-    id        INTEGER PRIMARY KEY,
-    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    code_hash TEXT NOT NULL,
-    used_at   INTEGER
-  );
+  DROP TABLE IF EXISTS backup_codes; -- replaced by emailed codes
   CREATE TABLE IF NOT EXISTS passkeys (
     id            INTEGER PRIMARY KEY,
     user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -42,8 +38,7 @@ const b64url = (buf) => Buffer.from(buf).toString('base64url');
 export function mfaStatus(userId) {
   const u = db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(userId);
   const passkeys = db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?').get(userId).n;
-  const backupLeft = db.prepare('SELECT COUNT(*) AS n FROM backup_codes WHERE user_id = ? AND used_at IS NULL').get(userId).n;
-  return { totp: !!u?.totp_secret, passkeys, backupLeft, enabled: !!u?.totp_secret || passkeys > 0 };
+  return { totp: !!u?.totp_secret, passkeys, enabled: !!u?.totp_secret || passkeys > 0 };
 }
 
 export const mfaRequired = () => getSetting('security.require2fa') === '1';
@@ -51,7 +46,6 @@ export const mfaRequired = () => getSetting('security.require2fa') === '1';
 export function resetMfa(userId) {
   db.prepare('UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last_step = 0 WHERE id = ?').run(userId);
   db.prepare('DELETE FROM passkeys WHERE user_id = ?').run(userId);
-  db.prepare('DELETE FROM backup_codes WHERE user_id = ?').run(userId);
 }
 
 // ---------- TOTP ----------
@@ -137,42 +131,16 @@ export function disableTotp(userId) {
   db.prepare('UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last_step = 0 WHERE id = ?').run(userId);
 }
 
-// ---------- Backup codes ----------
-
-const hashCode = (code) => crypto.createHash('sha256').update(String(code).toLowerCase().replace(/[^a-z0-9]/g, '')).digest('hex');
-
-// Ten new codes like "7kq2-m9xr"; replaces any old ones. Shown once.
-export function newBackupCodes(userId) {
-  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; // no look-alikes (0/o, 1/l/i)
-  const codes = Array.from({ length: 10 }, () => {
-    const bytes = crypto.randomBytes(8);
-    const raw = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
-    return `${raw.slice(0, 4)}-${raw.slice(4)}`;
-  });
-  db.prepare('DELETE FROM backup_codes WHERE user_id = ?').run(userId);
-  const ins = db.prepare('INSERT INTO backup_codes (user_id, code_hash) VALUES (?, ?)');
-  for (const c of codes) ins.run(userId, hashCode(c));
-  return codes;
-}
-
 // ---------- Second step after the password ----------
 
-// A code from the authenticator app or an unused backup code
-export function verifySecondFactorCode(userId, code) {
+// A code from the authenticator app
+export function verifyTotpCode(userId, code) {
   const u = db.prepare('SELECT totp_secret, totp_last_step FROM users WHERE id = ?').get(userId);
-  if (u?.totp_secret) {
-    const step = matchTotp(u.totp_secret, code, u.totp_last_step);
-    if (step != null) {
-      db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, userId);
-      return 'totp';
-    }
-  }
-  const backup = db.prepare('SELECT id FROM backup_codes WHERE user_id = ? AND code_hash = ? AND used_at IS NULL').get(userId, hashCode(code));
-  if (backup) {
-    db.prepare('UPDATE backup_codes SET used_at = ? WHERE id = ?').run(Date.now(), backup.id);
-    return 'backup';
-  }
-  return null;
+  if (!u?.totp_secret) return false;
+  const step = matchTotp(u.totp_secret, code, u.totp_last_step);
+  if (step == null) return false;
+  db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, userId);
+  return true;
 }
 
 // Password accepted, second factor still needed: a short-lived ticket for the next step

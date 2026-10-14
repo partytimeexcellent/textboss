@@ -1,5 +1,5 @@
 // Admin settings, split into tabs of separate cards:
-// BulkVS (connection + webhook), Numbers, Users, Contacts (import + API), Blocked
+// BulkVS (connection + webhook), Numbers, Users, Email, Contacts (import + API), Blocked, Backup
 
 import {
   h, fill, icon, state, els, route, api, toast, formatPhone, numberLabel, dialog, confirmDialog,
@@ -10,6 +10,7 @@ const TABS = [
   ['bulkvs', 'BulkVS'],
   ['numbers', 'Numbers'],
   ['users', 'Users'],
+  ['email', 'Email'],
   ['contacts', 'Contacts & Import'],
   ['blocked', 'Blocked'],
   ['backup', 'Backup'],
@@ -40,7 +41,7 @@ export async function renderAdmin() {
     body);
   fill(body, h('div', { class: 'hint' }, 'Loading…'));
   try {
-    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsersTab, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderBulkvs;
+    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderBulkvs;
     const content = await render();
     if (route().view !== 'admin' || route().section !== section) return; // navigated away meanwhile
     fill(body, content);
@@ -243,13 +244,14 @@ async function renderUsers() {
     [
       !u && h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'off' })),
       h('label', {}, 'Display name', h('input', { type: 'text', name: 'displayName', value: u?.displayName ?? '' })),
+      h('label', {}, 'Email (for password resets and emailed sign-in codes)', h('input', { type: 'email', name: 'email', value: u?.email ?? '', autocomplete: 'off' })),
       h('label', {}, u ? 'New password (leave blank to keep)' : 'Password (8+ characters)', h('input', { type: 'password', name: 'password', required: !u, minLength: 8, autocomplete: 'new-password' })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'isAdmin', checked: !!u?.isAdmin }), 'Admin: sees every number and can change these settings'),
       h('div', { class: 'field-label' }, 'Numbers this user can use'), numberChecks(u?.numberIds),
     ],
     u ? 'Save' : 'Add user',
     async (data) => {
-      const body = { displayName: data.get('displayName'), isAdmin: data.get('isAdmin') === 'on', numberIds: data.getAll('numberIds').map(Number) };
+      const body = { displayName: data.get('displayName'), email: data.get('email'), isAdmin: data.get('isAdmin') === 'on', numberIds: data.getAll('numberIds').map(Number) };
       if (data.get('password')) body.password = data.get('password');
       if (u) await api(`/admin/users/${u.id}`, { method: 'PATCH', body });
       else await api('/admin/users', { method: 'POST', body: { ...body, username: data.get('username') } });
@@ -264,7 +266,7 @@ async function renderUsers() {
       h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Username'), h('th', {}, 'Access'), h('th', {}, 'Two-factor'), h('th', { class: 'right' }, 'Actions'))),
       h('tbody', {}, users.map((u) => h('tr', {},
         h('td', { class: 'strong' }, u.displayName, u.id === state.me.id && h('span', { class: 'hint' }, ' (you)')),
-        h('td', {}, u.username),
+        h('td', {}, u.username, u.email ? h('div', { class: 'hint' }, u.email) : h('div', { class: 'hint' }, 'No email')),
         h('td', {}, u.isAdmin ? pill('Admin · all numbers', 'accent') : u.numberIds.length ? u.numberIds.map(numberLabel).join(', ') : pill('No numbers', 'warn')),
         h('td', {}, u.mfa.totp || u.mfa.passkeys
           ? pill([u.mfa.totp && 'App', u.mfa.passkeys && `${u.mfa.passkeys} passkey${u.mfa.passkeys > 1 ? 's' : ''}`].filter(Boolean).join(' + '), 'ok')
@@ -272,7 +274,7 @@ async function renderUsers() {
         h('td', {}, h('div', { class: 'row-actions' },
           h('button', { class: 'btn', onclick: () => userDialog(u) }, 'Edit'),
           (u.mfa.totp || u.mfa.passkeys > 0) && u.id !== state.me.id && h('button', { class: 'btn', title: 'For a lost phone or security key', onclick: async () => {
-            if (!(await confirmDialog(`Reset two-factor for ${u.displayName}?`, 'Their authenticator app, passkeys and backup codes are removed and they are signed out everywhere. They sign in with just their password and set two-factor up again' + (security.require2fa ? ' (required).' : '.'), 'Reset', { danger: true }))) return;
+            if (!(await confirmDialog(`Reset two-factor for ${u.displayName}?`, 'Their authenticator app and passkeys are removed and they are signed out everywhere. They sign in with just their password and set two-factor up again' + (security.require2fa ? ' (required).' : '.'), 'Reset', { danger: true }))) return;
             await api(`/admin/users/${u.id}/reset-2fa`, { method: 'POST' });
             toast(`Two-factor reset for ${u.displayName}`);
             renderAdmin();
@@ -303,7 +305,96 @@ function securityPolicyCard(security, users) {
       h('span', {}, h('strong', {}, 'Require two-factor sign-in for everyone'),
         h('span', { class: 'hint' }, ' — people without it are taken through setup the next time they use TextBoss.'))),
     missing.length > 0 && h('p', { class: 'hint' }, `Not set up yet: ${missing.map((u) => u.displayName).join(', ')}.`),
-    h('p', { class: 'hint' }, 'Someone lost their phone or key? Use Reset 2FA next to their name. Failed sign-ins lock that username for 15 minutes after 8 wrong passwords or 6 wrong codes.'));
+    h('p', { class: 'hint' }, 'Someone without their phone or key can get an emailed code instead, if their email is saved and email is set up (Admin settings → Email). Otherwise use Reset 2FA next to their name. Failed sign-ins lock that username for 15 minutes after 8 wrong passwords or 6 wrong codes.'));
+}
+
+// ---------- Email ----------
+
+const SMTP_PRESETS = [
+  ['Google Workspace / Gmail', 'smtp.gmail.com', 587, 'starttls'],
+  ['Microsoft 365 / Outlook', 'smtp.office365.com', 587, 'starttls'],
+  ['iCloud Mail', 'smtp.mail.me.com', 587, 'starttls'],
+];
+
+async function renderEmail() {
+  const s = await api('/admin/email');
+  const host = h('input', { type: 'text', value: s.host, placeholder: 'smtp.example.com', autocomplete: 'off', spellcheck: false });
+  const port = h('input', { type: 'number', value: s.port, min: 1, max: 65535 });
+  const security = h('select', {},
+    [['starttls', 'STARTTLS (usually port 587)'], ['tls', 'SSL/TLS (usually port 465)'], ['none', 'None (local relay only)']]
+      .map(([v, label]) => h('option', { value: v, selected: s.security === v }, label)));
+  const username = h('input', { type: 'text', value: s.username, autocomplete: 'off', spellcheck: false });
+  const password = h('input', { type: 'password', autocomplete: 'new-password', placeholder: s.hasPassword ? 'Saved. Leave blank to keep.' : '' });
+  const from = h('input', { type: 'text', value: s.from, placeholder: 'TextBoss <textboss@yourpractice.com>', spellcheck: false });
+  const testTo = h('input', { type: 'email', placeholder: 'you@example.com' });
+  const result = h('div', { class: 'test-result', role: 'status' });
+  const showResult = (ok, message) => fill(result, h('span', { class: ok ? 'ok' : 'bad' }, ok ? '✓ ' : '✕ ', message));
+
+  const presets = h('div', { class: 'row-actions left' }, SMTP_PRESETS.map(([name, hst, prt, sec]) => h('button', { type: 'button', class: 'btn', onclick: () => {
+    host.value = hst;
+    port.value = prt;
+    security.value = sec;
+  } }, name)));
+
+  const smtp = card('Sending email',
+    'TextBoss emails people a code when they use "Forgot password?" or don\'t have their passkey or authenticator app with them. Use any email account\'s SMTP settings.',
+    h('div', { class: 'status-row' }, s.configured ? pill('Set up', 'ok') : pill('Not set up: "Forgot password?" is hidden', 'warn')),
+    h('div', { class: 'field-label' }, 'Fill in for'), presets,
+    h('div', { class: 'form-grid' },
+      field('SMTP server', host),
+      field('Port', port),
+      field('Security', security),
+      h('div'),
+      field('Username', username, 'Usually the full email address'),
+      field('Password', password, 'For Google, Microsoft and iCloud this is an app password, not the normal one'),
+      field('Send from', from, 'Must be an address this account is allowed to send as'),
+    ),
+    h('div', { class: 'card-actions' },
+      h('button', { class: 'btn primary', onclick: async () => {
+        try {
+          await api('/admin/email', { method: 'PUT', body: { host: host.value, port: port.value, security: security.value, username: username.value, password: password.value, from: from.value } });
+          password.value = '';
+          toast('Email settings saved');
+          renderAdmin();
+        } catch (err) {
+          showResult(false, err.message);
+        }
+      } }, 'Save'),
+      s.configured && h('button', { class: 'btn danger', onclick: async () => {
+        if (!(await confirmDialog('Remove email settings?', '"Forgot password?" and emailed sign-in codes will stop working until new settings are saved.', 'Remove', { danger: true }))) return;
+        await api('/admin/email', { method: 'DELETE' });
+        toast('Email settings removed');
+        renderAdmin();
+      } }, 'Remove')),
+    result);
+
+  const result2 = h('div', { class: 'test-result', role: 'status' });
+  const test = s.configured && card('Send a test',
+    'Check that email arrives (look in spam too). Save any changes above first.',
+    h('div', { class: 'input-with-btn' }, testTo,
+      h('button', { class: 'btn', onclick: async (e) => {
+        e.target.disabled = true;
+        fill(result2, h('span', { class: 'hint' }, 'Sending…'));
+        try {
+          await api('/admin/email/test', { method: 'POST', body: { to: testTo.value } });
+          fill(result2, h('span', { class: 'ok' }, `✓ Sent to ${testTo.value}`));
+        } catch (err) {
+          fill(result2, h('span', { class: 'bad' }, `✕ ${err.message}`));
+        } finally {
+          e.target.disabled = false;
+        }
+      } }, 'Send test')));
+  if (test) test.querySelector('.card-body').append(result2);
+
+  const users = await api('/admin/users');
+  const missing = users.filter((u) => !u.email);
+  const people = card('Staff email addresses',
+    'Each person can add their own under ⋮ → Security, or you can add them under Users → Edit.',
+    missing.length
+      ? h('p', { class: 'hint' }, `No email yet: ${missing.map((u) => u.displayName).join(', ')}. They can't reset their own password or get emailed codes.`)
+      : h('p', { class: 'ok' }, '✓ Everyone has an email address.'));
+
+  return [smtp, test, people];
 }
 
 // ---------- Contacts & import ----------

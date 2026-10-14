@@ -1,5 +1,5 @@
 // Personal security settings: authenticator app, passkeys / security keys,
-// backup codes and signing out other devices. Also used as the required
+// email (password reset and emailed sign-in codes) and signing out other devices. Also used as the required
 // setup screen when an admin turns on "require two-factor sign-in".
 
 import { h, fill, icon, api, toast, dialog, paneHead, relTime } from './core.js';
@@ -23,17 +23,6 @@ function askPassword(title, message, confirmLabel) {
   });
 }
 
-export function showBackupCodes(codes) {
-  const text = codes.join('\n');
-  dialog('Save your backup codes', [
-    h('p', { class: 'dialog-text' }, 'Each code signs you in once if you don\'t have your phone or security key. Store them somewhere safe, like a password manager. They won\'t be shown again.'),
-    h('div', { class: 'backup-codes' }, codes.map((c) => h('code', {}, c))),
-    h('div', { class: 'card-actions' },
-      h('button', { type: 'button', class: 'btn', onclick: () => navigator.clipboard.writeText(text).then(() => toast('Copied')) }, 'Copy'),
-      h('a', { class: 'btn', download: 'textboss-backup-codes.txt', href: `data:text/plain;charset=utf-8,${encodeURIComponent(`TextBoss backup codes\n${location.host}\n\n${text}\n`)}` }, icon('download'), 'Download')),
-  ], null, () => {});
-}
-
 // container: where to draw. forced: the admin requires 2FA and this person has none.
 export async function renderSecurity(container, { forced = false, onEnabled } = {}) {
   let s;
@@ -44,8 +33,7 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
     return;
   }
   const redraw = () => renderSecurity(container, { forced, onEnabled });
-  const afterFirstMethod = (codes) => {
-    if (codes) showBackupCodes(codes);
+  const afterFirstMethod = () => {
     if (forced && onEnabled) onEnabled();
     else redraw();
   };
@@ -92,10 +80,10 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
         h('button', { class: 'btn primary', onclick: async (e) => {
           e.target.disabled = true;
           try {
-            const r = await api('/me/totp/enable', { method: 'POST', body: { code: code.value } });
+            await api('/me/totp/enable', { method: 'POST', body: { code: code.value } });
             toast('Authenticator app is on');
             s.totp = true;
-            afterFirstMethod(r.backupCodes);
+            afterFirstMethod();
           } catch (err) {
             error.textContent = err.message;
             e.target.disabled = false;
@@ -115,14 +103,15 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
     ], 'Continue', async () => {
       const options = await api('/me/passkeys/options', { method: 'POST', body: {} });
       const response = await createPasskey(options);
-      const r = await api('/me/passkeys', { method: 'POST', body: { name: name.value, response } });
+      await api('/me/passkeys', { method: 'POST', body: { name: name.value, response } });
       toast('Passkey added');
-      afterFirstMethod(r.backupCodes);
+      afterFirstMethod();
     });
   };
 
   const passkeyCard = card('Passkeys and security keys',
     'Sign in with Face ID, Touch ID, Windows Hello, your Android phone, or a USB/NFC key such as a YubiKey. The most secure option, and you can use one instead of your password.',
+    h('p', { class: 'hint' }, 'Add one on each phone and computer you use; you can have as many as you like. A passkey saved in Apple Passwords only shows up on devices signed in to the same Apple Account (Google Password Manager works the same way), so a phone on a different account needs its own. Sign in there with your password and an emailed code, then add it here.'),
     s.passkeyList.length
       ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'Added'), h('th', {}, 'Last used'), h('th', { class: 'right' }, ''))),
@@ -148,20 +137,36 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
         ? `Passkeys can only be added at ${s.origin}. Open TextBoss there to add one.`
         : 'Passkeys need TextBoss to be reached over HTTPS. They\'ll be available once it\'s behind your secure web address.'));
 
-  // ----- Backup codes -----
-  const backupCard = s.enabled && card('Backup codes',
-    'One-time codes for when you don\'t have your phone or security key.',
-    h('div', { class: 'status-row' }, pill(`${s.backupLeft} of 10 left`, s.backupLeft <= 2 ? 'warn' : '')),
-    h('div', { class: 'card-actions' }, h('button', { class: 'btn', onclick: async () => {
-      const password = await askPassword('Make new backup codes?', 'Your old backup codes will stop working.', 'Make new codes');
-      if (password == null) return;
-      try {
-        showBackupCodes((await api('/me/backup-codes', { method: 'POST', body: { password } })).codes);
-        redraw();
-      } catch (err) {
-        toast(err.message);
-      }
-    } }, 'Make new codes')));
+  // ----- Email -----
+  const emailInput = h('input', { type: 'email', value: s.email, placeholder: 'you@example.com', autocomplete: 'email' });
+  const emailCard = card('Email',
+    'For "Forgot password?" on the sign-in screen, and to email you a sign-in code when you don\'t have your passkey or authenticator app with you.',
+    h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Your email address'), emailInput),
+    !s.emailConfigured && h('p', { class: 'hint' }, 'Your administrator hasn\'t set up email sending yet. You can save your address now; it starts working once they do.'),
+    h('div', { class: 'card-actions' },
+      h('button', { class: 'btn primary', onclick: async () => {
+        if (emailInput.value.trim() === s.email) return toast('No change');
+        const password = await askPassword('Change your email?', 'Password resets and sign-in codes will go to the new address.', 'Save');
+        if (password == null) return;
+        try {
+          await api('/me/email', { method: 'POST', body: { email: emailInput.value, password } });
+          toast(emailInput.value.trim() ? 'Email saved' : 'Email removed');
+          redraw();
+        } catch (err) {
+          toast(err.message);
+        }
+      } }, 'Save'),
+      s.email && s.emailConfigured && h('button', { class: 'btn', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          await api('/me/email/test', { method: 'POST', body: {} });
+          toast(`Test email sent to ${s.email}`);
+        } catch (err) {
+          toast(err.message);
+        } finally {
+          e.target.disabled = false;
+        }
+      } }, 'Send me a test email')));
 
   // ----- Sessions -----
   const sessionsCard = !forced && card('Signed-in devices',
@@ -177,13 +182,13 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
       h('strong', {}, s.enabled ? 'Two-factor sign-in is on. ' : forced ? 'Your administrator requires two-factor sign-in. ' : 'Two-factor sign-in is off. '),
       s.enabled
         ? 'Signing in needs your password plus a code or passkey.'
-        : 'Add an authenticator app or a passkey below. You only need one, but adding both gives you a backup.'));
+        : 'Add an authenticator app or a passkey below. You only need one, but adding a passkey on each device you use, or both, saves you from getting stuck.'));
 
   fill(container,
     summary,
     card('Authenticator app', 'Six-digit codes from an app on your phone. Works on iPhone, Android and every computer.', totpBody),
     passkeyCard,
-    backupCard,
+    emailCard,
     sessionsCard);
 }
 
