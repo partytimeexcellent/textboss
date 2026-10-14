@@ -123,7 +123,7 @@ All three import paths use the same rules:
 - **Never destructive:** imports never delete contacts or clear fields the file doesn't include, such as notes.
 - **Bad values:** an invalid phone, email or date of birth doesn't skip the client. That one value is left out (an existing good value is kept) and listed under "Problems to fix" with the spreadsheet row, name and client ID. You can download that list as a CSV.
 
-Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` / `Client Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Client ID` / `Patient ID` / `MRN`, `Notes`, `Opt Out`.
+Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` / `Client Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Patient ID` / `Patient ID` / `Client ID` / `MRN`, `Notes`, `Opt Out`.
 
 - **Upload:** Admin settings → Import contacts. It shows a preview, with new, updated and skipped counts, before saving.
 - **Watched folder:** files saved into `import/` (Docker) or `data/import/` (local) are imported within a minute, then moved to `processed/` or `failed/`. Results appear under Admin settings → Recent imports. The export software can save straight into this folder, or into a network share mounted there.
