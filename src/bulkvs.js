@@ -130,6 +130,8 @@ export function parseWebhook(body) {
       kind: 'receipt',
       refId: refId != null ? String(refId) : null,
       to: normalizePhone(pick(body, 'To', 'Destination') ?? ''),
+      // The person the original text went to, for matching when RefId doesn't
+      recipient: normalizePhone(pick(body, 'From', 'Source', 'To', 'Destination') ?? ''),
       status: DLR_DELIVERED.test(stat) ? 'delivered' : DLR_FAILED.test(stat) ? 'failed' : 'sent',
       detail: s,
     };

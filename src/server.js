@@ -29,7 +29,7 @@ import { subscribe, publish } from './events.js';
 import { normalizePhone, isValidPhone, participantsKey } from './phone.js';
 import { parseWebhook, testConnection as testBulkvs } from './bulkvs.js';
 import { parseCallback as parseVoipms, testConnection as testVoipms } from './voipms.js';
-import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcasts } from './messaging.js';
+import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcasts, cleanUpStoredReceipts } from './messaging.js';
 import { fail } from './http.js';
 import { securityHeaders, assertNotLocked, recordFailure, recordSuccess, mfaKey } from './security.js';
 import * as mfa from './mfa.js';
@@ -1199,6 +1199,7 @@ app.use((err, _req, res, _next) => {
 resumeBroadcasts();
 startWatcher();
 startIdleJob();
+cleanUpStoredReceipts();
 
 app.listen(config.port, () => {
   console.log(`TextBoss listening on http://localhost:${config.port}`);

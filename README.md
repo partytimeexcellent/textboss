@@ -152,7 +152,7 @@ Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `La
 
 ## Things to verify on first real use
 
-Sending and receiving texts are confirmed working with BulkVS. Delivery receipts aren't confirmed yet: the parser looks for `RefId` and `DeliveryReceipt` fields. Every raw webhook body is stored and shown under Admin settings → Recent webhook calls. If receipts show as "not applied" there, `parseWebhook()` in [src/bulkvs.js](src/bulkvs.js) is the only place to adjust.
+Sending, receiving and delivery receipts are confirmed working with BulkVS. Turn on delivery receipts (DLR) on the BulkVS messaging webhook; BulkVS sends each one as a carrier-format message (`id:… stat:DELIVRD err:000 text:…`), which TextBoss applies to the matching sent text (Sent → Delivered, or Failed with the reason) instead of showing it. Every raw webhook body is stored and shown under Admin settings → Recent webhook calls. If receipts show as "not applied" there, `parseWebhook()` in [src/bulkvs.js](src/bulkvs.js) is the only place to adjust.
 
 ## Layout
 

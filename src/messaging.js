@@ -85,7 +85,24 @@ function insertMessage(conversation, fields) {
 
 // Inbound message from the webhook. `to` may hold several numbers for a group
 // MMS; we file it under whichever of them is one of our numbers.
+// Delivery receipts in the carrier (SMPP) format, which BulkVS sends as an
+// ordinary incoming message from the recipient, e.g.
+//   id:585919817 sub:001 dlvrd:001 submit date:2610140737 done date:2610140737 stat:DELIVRD err:000 text:Another test!
+const DLR_TEXT = /^\s*id:(\S+)\s+sub:\d+\s+dlvrd:\d+\s+submit date:\d+\s+done date:\d+\s+stat:(\w+)\s+err:(\w+)(?:\s+text:([\s\S]*))?$/i;
+
+export function parseDlrText(text) {
+  const m = DLR_TEXT.exec(String(text ?? ''));
+  if (!m) return null;
+  const [, id, stat, err, snippet = ''] = m;
+  const status = /DELIVRD|DELIVERED/i.test(stat) ? 'delivered' : /ACCEPTD|ENROUTE/i.test(stat) ? 'sent' : 'failed';
+  return { id, status, detail: `${stat}${err && err !== '000' ? ` (error ${err})` : ''}`, snippet: snippet.trim() };
+}
+
 export function recordInbound({ from, to, body, media, refId = null }) {
+  // A delivery receipt dressed up as a text: update the sent message instead
+  const dlr = parseDlrText(body);
+  if (dlr) return applyReceipt({ refId: dlr.id, status: dlr.status, detail: dlr.detail, recipient: from, ourNumbers: to, snippet: dlr.snippet });
+
   // Providers retry a callback they think failed; don't store the same text twice
   if (refId && db.prepare('SELECT 1 FROM messages WHERE ref_id = ?').get(refId)) return { ok: true, duplicate: true };
   const ours = db.prepare('SELECT * FROM numbers WHERE phone = ?');
@@ -241,10 +258,35 @@ export async function sendOutbound({ conversation, number, user, body, media = [
   return getMessage(id);
 }
 
-export function applyReceipt({ refId, status, detail }) {
-  if (!refId) return { ok: false, reason: 'receipt without RefId' };
-  const rows = db.prepare('SELECT id, conversation_id FROM messages WHERE ref_id = ?').all(refId);
-  if (!rows.length) return { ok: false, reason: `no message with RefId ${refId}` };
+// Finds the sent message a receipt is about: by the provider's reference when
+// it matches, otherwise the latest recent text to that recipient whose start
+// matches the receipt's text (carriers include the first ~20 characters).
+function findReceiptTarget({ refId, recipient, ourNumbers = [], snippet }) {
+  if (refId) {
+    const rows = db.prepare("SELECT id, conversation_id FROM messages WHERE ref_id = ? AND direction = 'out'").all(String(refId));
+    if (rows.length) return rows;
+  }
+  const phone = normalizePhone(recipient ?? '');
+  if (!phone) return [];
+  const numbers = ourNumbers.map(normalizePhone).filter(Boolean);
+  const candidates = db.prepare(`SELECT m.id, m.conversation_id, m.body, m.status FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    JOIN numbers n ON n.id = c.number_id
+    WHERE m.direction = 'out' AND m.created_at > ? AND (',' || c.participants || ',') LIKE ?
+      ${numbers.length ? `AND n.phone IN (${numbers.map(() => '?').join(',')})` : ''}
+    ORDER BY m.id DESC LIMIT 50`).all(Date.now() - 3 * 86_400_000, `%,${phone},%`, ...numbers);
+  const clean = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const want = clean(snippet);
+  const pending = (m) => m.status === 'sent' || m.status === 'sending';
+  const match = want
+    ? candidates.find((m) => pending(m) && clean(m.body).startsWith(want)) ?? candidates.find((m) => clean(m.body).startsWith(want))
+    : candidates.find(pending);
+  return match ? [match] : [];
+}
+
+export function applyReceipt({ refId, status, detail, recipient, ourNumbers, snippet }) {
+  const rows = findReceiptTarget({ refId, recipient, ourNumbers, snippet });
+  if (!rows.length) return { ok: false, reason: `receipt (${detail ?? status}) matched no sent message${refId ? `; ref ${refId}` : ''}` };
   for (const row of rows) {
     db.prepare('UPDATE messages SET status = ?, error = ? WHERE id = ?').run(
       status,
@@ -254,7 +296,33 @@ export function applyReceipt({ refId, status, detail }) {
     const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(row.conversation_id);
     announce(conversation, getMessage(row.id));
   }
-  return { ok: true };
+  return { ok: true, receipt: status };
+}
+
+// Receipts stored as incoming texts before they were recognized: apply them to
+// the sent message and remove the bubble. Runs at startup; does nothing once clean.
+export function cleanUpStoredReceipts() {
+  const rows = db.prepare(`SELECT m.id, m.conversation_id, m.from_phone, m.body, n.phone AS our_number FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id JOIN numbers n ON n.id = c.number_id
+    WHERE m.direction = 'in' AND m.body LIKE 'id:%stat:%' ORDER BY m.id`).all();
+  const touched = new Set();
+  let removed = 0;
+  for (const r of rows) {
+    const dlr = parseDlrText(r.body);
+    if (!dlr) continue;
+    applyReceipt({ refId: dlr.id, status: dlr.status, detail: dlr.detail, recipient: r.from_phone, ourNumbers: [r.our_number], snippet: dlr.snippet });
+    db.prepare('DELETE FROM messages WHERE id = ?').run(r.id);
+    touched.add(r.conversation_id);
+    removed++;
+  }
+  for (const id of touched) {
+    db.prepare('UPDATE conversations SET last_message_at = COALESCE((SELECT MAX(created_at) FROM messages WHERE conversation_id = ?), 0) WHERE id = ?').run(id, id);
+  }
+  if (removed) {
+    console.log(`Turned ${removed} delivery receipt${removed === 1 ? '' : 's'} stored as messages into delivery statuses`);
+    publish(allUserIds(), 'read', {});
+  }
+  return removed;
 }
 
 // ---------- Bulk messages ----------
