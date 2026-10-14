@@ -12,6 +12,10 @@ export const config = {
     password: env.BULKVS_PASSWORD || env.BULKVS_TOKEN || '',
     apiBase: (env.BULKVS_API_BASE || 'https://portal.bulkvs.com/api/v1.0').replace(/\/+$/, ''),
   },
+  voipms: {
+    username: env.VOIPMS_USERNAME || '',
+    password: env.VOIPMS_PASSWORD || '',
+  },
   webhookSecret: env.WEBHOOK_SECRET || '',
   // 'auto': Secure cookies when the request came over HTTPS (directly or via a
   // proxy's X-Forwarded-Proto), plain cookies over http:// on the local network

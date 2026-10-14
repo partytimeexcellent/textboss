@@ -1142,7 +1142,7 @@ function renderPaneMessages(p, forceBottom = false) {
       else if (['mp3', 'm4a', 'amr', 'wav'].includes(ext)) view = h('audio', { src: url, controls: true });
       else if (['pdf', 'vcf', 'txt'].includes(ext)) view = h('a', { class: 'file', href: url, target: '_blank', rel: 'noopener' }, `📎 ${ext.toUpperCase()} file`);
       else view = h('a', { href: url, target: '_blank', rel: 'noopener' }, h('img', { src: url, alt: 'Attachment', loading: 'lazy' }));
-      // Goes through the server so BulkVS-hosted files download instead of opening
+      // Goes through the server so provider-hosted files download instead of opening
       return h('div', { class: 'media-item' }, view,
         h('a', { class: 'media-download', href: `/api/messages/${m.id}/media/${i}`, download: '', title: 'Download' }, icon('download'), 'Download'));
     });

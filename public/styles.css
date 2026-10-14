@@ -750,3 +750,5 @@ a.btn.primary { color: var(--accent-text); }
     .sidebar, .thread { padding-top: calc(env(safe-area-inset-top) + 14px); }
   }
 }
+.provider-form { display: grid; gap: 12px; }
+.provider-form > .hint { margin: 0; }

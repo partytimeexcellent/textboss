@@ -167,7 +167,7 @@ function steps(actions) {
       title: 'The menu',
       body: [
         'Security (passkeys, sign-in codes and your email), Appearance (colors and your own app icon), Refresh, and this tour again.',
-        admin ? 'Admin settings live here too: BulkVS, numbers, users, email and contact imports.' : null,
+        admin ? 'Admin settings live here too: your texting provider, numbers, users, email and contact imports.' : null,
       ],
     },
     { checklist: true, before: goHome, title: 'Finish setting up', actions },
@@ -211,7 +211,7 @@ async function checklistItems(actions) {
     items.push({
       done: false,
       title: 'Admin: check your settings',
-      text: 'Connect BulkVS, add your numbers and staff, and set up email so staff can reset their own passwords.',
+      text: 'Connect your texting provider (BulkVS or VoIP.ms), add your numbers and staff, and set up email so staff can reset their own passwords.',
       label: 'Open', run: actions.admin,
     });
   }

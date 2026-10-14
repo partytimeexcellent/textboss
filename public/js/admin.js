@@ -1,5 +1,5 @@
 // Admin settings, split into tabs of separate cards:
-// BulkVS (connection + webhook), Numbers, Users, Email, Contacts (import + API), Blocked, Backup
+// Provider (BulkVS or VoIP.ms connection + webhook), Numbers, Users, Email, Contacts (import + API), Blocked, Backup
 
 import {
   h, fill, icon, state, els, route, api, toast, formatPhone, numberLabel, dialog, confirmDialog,
@@ -7,7 +7,7 @@ import {
 } from './core.js';
 
 const TABS = [
-  ['bulkvs', 'BulkVS'],
+  ['bulkvs', 'Provider'],
   ['numbers', 'Numbers'],
   ['users', 'Users'],
   ['email', 'Email'],
@@ -41,7 +41,7 @@ export async function renderAdmin() {
     body);
   fill(body, h('div', { class: 'hint' }, 'Loading…'));
   try {
-    const render = { bulkvs: renderBulkvs, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderBulkvs;
+    const render = { bulkvs: renderProvider, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderProvider;
     const content = await render();
     if (route().view !== 'admin' || route().section !== section) return; // navigated away meanwhile
     fill(body, content);
@@ -50,89 +50,138 @@ export async function renderAdmin() {
   }
 }
 
-// ---------- BulkVS ----------
+// ---------- Provider ----------
 
-async function renderBulkvs() {
-  const [provider, webhook, numbers] = await Promise.all([api('/admin/provider'), api('/admin/webhook-log'), api('/admin/numbers')]);
+// What each provider calls its credentials, and how to set it up
+const PROVIDER_INFO = {
+  bulkvs: {
+    intro: 'In the BulkVS portal, open API → API Credentials and copy the REST API username and password/token.',
+    userLabel: 'API username',
+    passLabel: 'API password / token',
+    userType: 'text',
+  },
+  voipms: {
+    intro: 'In the VoIP.ms portal, open Main Menu → SOAP and REST/JSON API. Set an API password, click Enable/Disable API to turn it on, and add this server\'s public IP address under Enabled IP Addresses.',
+    userLabel: 'VoIP.ms login email',
+    passLabel: 'API password (not your account password)',
+    userType: 'email',
+  },
+};
 
-  // Connection
-  const username = h('input', { type: 'text', value: provider.username, autocomplete: 'off', spellcheck: false });
-  const password = h('input', {
-    type: 'password',
-    autocomplete: 'new-password',
-    placeholder: provider.passwordSet ? `Saved (${provider.passwordHint}). Leave blank to keep.` : '',
-  });
-  const reveal = h('button', { type: 'button', class: 'icon-btn', title: 'Show password', onclick: () => {
-    password.type = password.type === 'password' ? 'text' : 'password';
-  } }, icon('eye'));
+async function renderProvider() {
+  const [overview, webhook, numbers] = await Promise.all([api('/admin/provider'), api('/admin/webhook-log'), api('/admin/numbers')]);
+  let chosen = overview.active;
+
   const result = h('div', { class: 'test-result', role: 'status' });
-  const status = provider.mockMode
-    ? pill('Not connected: mock mode', 'warn')
-    : provider.source === 'env' ? pill('Using credentials from .env', '') : pill('Credentials saved', 'ok');
-
   const showResult = (r) => fill(result, h('span', { class: r.ok ? 'ok' : 'bad' }, r.ok ? '✓ ' : '✕ ', r.message));
+  const choice = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Provider' });
+  const formBox = h('div', { class: 'provider-form' });
+  const webhookBox = h('div', {});
+  const statusRow = h('div', { class: 'status-row' });
 
-  const connection = card('BulkVS connection',
-    'TextBoss sends and receives through your BulkVS account. In the BulkVS portal, open API → API Credentials and copy the REST API username and password/token.',
-    h('div', { class: 'status-row' }, status),
-    h('div', { class: 'form-grid' },
-      field('Provider', h('select', { disabled: true }, h('option', {}, 'BulkVS'))),
-      h('div'),
-      field('API username', username),
-      field('API password / token', h('div', { class: 'input-with-btn' }, password, reveal)),
-    ),
-    h('p', { class: 'hint' }, 'Leave a field blank to keep the current value. The saved token is never shown.',
-      provider.source === 'env' ? ' Saving here overrides the values in .env.' : ''),
-    h('div', { class: 'card-actions' },
-      h('button', { class: 'btn primary', onclick: async () => {
-        try {
-          const next = await api('/admin/provider', { method: 'PUT', body: { username: username.value, password: password.value } });
-          state.mockMode = next.mockMode;
-          toast('BulkVS credentials saved');
-          showResult(await api('/admin/provider/test', { method: 'POST', body: {} }));
-          password.value = '';
-          password.placeholder = next.passwordSet ? `Saved (${next.passwordHint}). Leave blank to keep.` : '';
-          fill(status.parentNode, next.mockMode ? pill('Not connected: mock mode', 'warn') : pill('Credentials saved', 'ok'));
-        } catch (err) {
-          showResult({ ok: false, message: err.message });
-        }
-      } }, 'Save'),
-      h('button', { class: 'btn', onclick: async () => {
-        fill(result, h('span', { class: 'hint' }, 'Testing…'));
-        showResult(await api('/admin/provider/test', { method: 'POST', body: { username: username.value, password: password.value } }));
-      } }, 'Test connection'),
-      provider.source === 'admin' && h('button', { class: 'btn danger', onclick: async () => {
-        const fallback = provider.envConfigured ? 'TextBoss will go back to the credentials in .env.' : 'TextBoss will stop sending real texts (mock mode) until new credentials are saved.';
-        if (!(await confirmDialog('Remove saved credentials?', `The BulkVS username and token saved here will be deleted. ${fallback}`, 'Remove', { danger: true }))) return;
-        const next = await api('/admin/provider', { method: 'DELETE' });
-        state.mockMode = next.mockMode;
-        toast('Saved credentials removed');
-        renderAdmin();
-      } }, 'Remove saved credentials'),
-      result),
-  );
+  const drawStatus = () => {
+    const active = overview.providers[overview.active];
+    fill(statusRow, overview.mockMode
+      ? pill(`Not connected: mock mode (${active.name} has no credentials)`, 'warn')
+      : pill(`Sending through ${active.name}${active.source === 'env' ? ' (from .env)' : ''}`, 'ok'));
+  };
 
-  // Webhook
-  const webhookCard = card('Inbound webhook',
-    'BulkVS delivers incoming texts to this address. Without it, you can send but replies never arrive.',
-    webhook.url
-      ? [
-          h('div', { class: 'copy-line' }, h('code', {}, webhook.url),
-            h('button', { class: 'btn', onclick: () => navigator.clipboard.writeText(webhook.url).then(() => toast('Copied')) }, 'Copy')),
-          h('ol', { class: 'steps' },
-            h('li', {}, 'In the BulkVS portal open ', h('strong', {}, 'Messaging → Messaging Webhooks'), '. Enter a name such as "TextBoss" and paste the address above as the ', h('strong', {}, 'Message URL'), ', then click Add.'),
-            h('li', {}, 'Open ', h('strong', {}, 'Inbound → DIDs – Manage'), ', click each number, make sure SMS and MMS are enabled, and set its ', h('strong', {}, 'Messaging Webhook'), ' to the one you just made.'),
-            h('li', {}, 'Text one of your numbers from a cell phone. It should appear in Messages and in the log below.')),
-        ]
-      : h('p', { class: 'bad' }, 'WEBHOOK_SECRET is not set on the server, so incoming texts are turned off. Set it in .env and restart.'),
-  );
+  const drawForm = () => {
+    const info = PROVIDER_INFO[chosen];
+    const st = overview.providers[chosen];
+    const username = h('input', { type: info.userType, value: st.username, autocomplete: 'off', spellcheck: false });
+    const password = h('input', { type: 'password', autocomplete: 'new-password', placeholder: st.passwordSet ? `Saved (${st.passwordHint}). Leave blank to keep.` : '' });
+    const reveal = h('button', { type: 'button', class: 'icon-btn', title: 'Show password', onclick: () => {
+      password.type = password.type === 'password' ? 'text' : 'password';
+    } }, icon('eye'));
+    const isActive = chosen === overview.active;
+    fill(result);
+    fill(formBox,
+      h('p', { class: 'hint' }, info.intro),
+      h('div', { class: 'form-grid' },
+        field(info.userLabel, username),
+        field(info.passLabel, h('div', { class: 'input-with-btn' }, password, reveal))),
+      h('p', { class: 'hint' }, 'Leave a field blank to keep the current value. The saved password is never shown.',
+        st.source === 'env' ? ' Saving here overrides the values in .env.' : ''),
+      chosen === 'voipms' && h('p', { class: 'hint' }, 'VoIP.ms can\'t send group texts or report delivery, so messages show as Sent rather than Delivered. Texts over 160 characters go out as MMS (up to 2,048 characters, 3 attachments).'),
+      h('div', { class: 'card-actions' },
+        h('button', { class: 'btn primary', onclick: async () => {
+          try {
+            Object.assign(overview, await api('/admin/provider', { method: 'PUT', body: { provider: chosen, username: username.value, password: password.value } }));
+            state.mockMode = overview.mockMode;
+            toast(`${st.name} saved${isActive ? '' : ' and now in use'}`);
+            drawAll();
+            showResult(await api('/admin/provider/test', { method: 'POST', body: { provider: chosen } }));
+          } catch (err) {
+            showResult({ ok: false, message: err.message });
+          }
+        } }, isActive ? 'Save' : `Save and use ${st.name}`),
+        h('button', { class: 'btn', onclick: async () => {
+          fill(result, h('span', { class: 'hint' }, 'Testing…'));
+          showResult(await api('/admin/provider/test', { method: 'POST', body: { provider: chosen, username: username.value, password: password.value } }));
+        } }, 'Test connection'),
+        !isActive && st.username && h('button', { class: 'btn', onclick: async () => {
+          Object.assign(overview, await api('/admin/provider/active', { method: 'PUT', body: { provider: chosen } }));
+          state.mockMode = overview.mockMode;
+          toast(`Now sending through ${st.name}`);
+          drawAll();
+        } }, `Switch to ${st.name}`),
+        st.source === 'admin' && h('button', { class: 'btn danger', onclick: async () => {
+          const fallback = st.envConfigured ? 'TextBoss will go back to the credentials in .env.'
+            : isActive ? 'TextBoss will stop sending real texts (mock mode) until new credentials are saved.' : '';
+          if (!(await confirmDialog('Remove saved credentials?', `The ${st.name} username and password saved here will be deleted. ${fallback}`, 'Remove', { danger: true }))) return;
+          Object.assign(overview, await api(`/admin/provider?provider=${chosen}`, { method: 'DELETE' }));
+          state.mockMode = overview.mockMode;
+          toast('Saved credentials removed');
+          drawAll();
+        } }, 'Remove saved credentials')),
+      result);
+  };
+
+  const drawWebhook = () => {
+    const url = overview.webhooks[chosen];
+    const copy = (text) => h('div', { class: 'copy-line' }, h('code', {}, text),
+      h('button', { class: 'btn', onclick: () => navigator.clipboard.writeText(text).then(() => toast('Copied')) }, 'Copy'));
+    fill(webhookBox, !url
+      ? h('p', { class: 'bad' }, 'WEBHOOK_SECRET is not set on the server, so incoming texts are turned off. Set it in .env and restart.')
+      : chosen === 'voipms'
+        ? [copy(url),
+            h('ol', { class: 'steps' },
+              h('li', {}, 'In the VoIP.ms portal open ', h('strong', {}, 'DID Numbers → Manage DIDs'), ' and click the edit (pencil) icon for a number.'),
+              h('li', {}, 'Under ', h('strong', {}, 'Message Service (SMS/MMS)'), ', turn on SMS (and MMS), tick ', h('strong', {}, 'SMS URL Callback'), ', and paste the address above. Turning on ', h('strong', {}, 'URL Callback Retry'), ' is safe: TextBoss ignores repeats.'),
+              h('li', {}, 'Click ', h('strong', {}, 'Apply changes'), ', repeat for each number, then text one from a cell phone. It should appear in Messages and in the log below.'))]
+        : [copy(url),
+            h('ol', { class: 'steps' },
+              h('li', {}, 'In the BulkVS portal open ', h('strong', {}, 'Messaging → Messaging Webhooks'), '. Enter a name such as "TextBoss" and paste the address above as the ', h('strong', {}, 'Message URL'), ', then click Add.'),
+              h('li', {}, 'Open ', h('strong', {}, 'Inbound → DIDs – Manage'), ', click each number, make sure SMS and MMS are enabled, and set its ', h('strong', {}, 'Messaging Webhook'), ' to the one you just made.'),
+              h('li', {}, 'Text one of your numbers from a cell phone. It should appear in Messages and in the log below.'))]);
+  };
+
+  function drawAll() {
+    fill(choice, Object.entries(overview.providers).map(([id, st]) => h('button', {
+      type: 'button', role: 'radio', 'aria-checked': String(chosen === id), class: chosen === id ? 'on' : '',
+      onclick: () => { chosen = id; drawAll(); },
+    }, st.name, id === overview.active && !overview.mockMode ? ' ✓' : '')));
+    drawStatus();
+    drawForm();
+    drawWebhook();
+  }
+  drawAll();
+
+  const connection = card('Texting provider',
+    'TextBoss sends and receives through your BulkVS or VoIP.ms account. Choose one, enter its API credentials, and save.',
+    statusRow, choice, formBox);
+
+  const webhookCard = card('Incoming texts',
+    'Your provider delivers incoming texts to this address. Without it, you can send but replies never arrive.',
+    webhookBox);
 
   // Simulate
   const simFrom = h('input', { type: 'tel', placeholder: 'e.g. 3125550000' });
   const simTo = h('select', {}, numbers.map((n) => h('option', { value: n.phone }, n.label ? `${n.label} · ${formatPhone(n.phone)}` : formatPhone(n.phone))));
   const simText = h('input', { type: 'text', placeholder: 'Message text' });
   const simulate = card('Test an incoming text',
-    'Runs a fake incoming text through the same steps as a real one, including STOP, keywords and the away message. Nothing is sent to BulkVS.',
+    'Runs a fake incoming text through the same steps as a real one, including STOP, keywords and the away message. Nothing is sent to your provider.',
     numbers.length
       ? h('div', { class: 'form-grid three' },
           field('From', simFrom), field('To', simTo), field('Message', simText))
@@ -147,7 +196,7 @@ async function renderBulkvs() {
 
   // Log
   const log = card('Recent webhook calls',
-    'The raw data BulkVS sent, newest first. "Not applied" means TextBoss could not match it to a number or understand it.',
+    'The raw data your provider sent, newest first. "Not applied" means TextBoss could not match it to a number or understand it.',
     webhook.entries.length
       ? h('div', { class: 'log-list' }, webhook.entries.map((e) => {
           const r = JSON.parse(e.result ?? '{}');
@@ -171,7 +220,7 @@ async function renderNumbers() {
 
   const activeCount = numbers.filter((n) => n.active).length;
   return card('Phone numbers',
-    'Your BulkVS numbers. Untick Active to hide a number everywhere in TextBoss; with only one active number, the number selector disappears. Texts that arrive on an inactive number are still saved.',
+    'Your phone numbers from BulkVS or VoIP.ms. Untick Active to hide a number everywhere in TextBoss; with only one active number, the number selector disappears. Texts that arrive on an inactive number are still saved.',
     numbers.length
       ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Active'), h('th', {}, 'Number'), h('th', {}, 'Label'), h('th', { class: 'right' }, 'Actions'))),
@@ -204,13 +253,13 @@ async function renderNumbers() {
                   toast('Saved');
                 } }, 'Save'),
                 h('button', { class: 'btn danger', onclick: async () => {
-                  if (!(await confirmDialog(`Remove ${formatPhone(n.phone)}?`, 'Its conversations and messages will be deleted from TextBoss. The number stays in your BulkVS account.', 'Remove', { danger: true }))) return;
+                  if (!(await confirmDialog(`Remove ${formatPhone(n.phone)}?`, 'Its conversations and messages will be deleted from TextBoss. The number stays in your provider account.', 'Remove', { danger: true }))) return;
                   await api(`/admin/numbers/${n.id}`, { method: 'DELETE' });
                   await refreshNumbers();
                   renderAdmin();
                 } }, 'Remove'))));
           }))))
-      : h('p', { class: 'empty-note' }, 'No numbers yet. Add your first BulkVS number below.'),
+      : h('p', { class: 'empty-note' }, 'No numbers yet. Add your first number below.'),
     h('div', { class: 'subsection' },
       h('h3', {}, 'Add a number'),
       h('div', { class: 'form-grid three' }, field('Phone number', phone), field('Label', label),
@@ -776,7 +825,7 @@ async function waitForRestart(statusEl) {
 
 async function renderBackup() {
   const download = card('Download a backup',
-    'One file with everything: messages, contacts, lists, canned responses, users, settings (including saved BulkVS credentials) and attachments.',
+    'One file with everything: messages, contacts, lists, canned responses, users, settings (including saved provider credentials) and attachments.',
     h('div', { class: 'callout warn' }, icon('warning'),
       h('div', {}, h('strong', {}, 'This file contains client information and passwords. '),
         'Store it somewhere private and delete copies you no longer need.')),
@@ -817,10 +866,10 @@ async function renderBackup() {
     h('ol', { class: 'steps' },
       h('li', {}, 'Here: ', h('strong', {}, 'Download backup'), '.'),
       h('li', {}, 'On the new server, install TextBoss as in the README and copy over your ', h('code', {}, '.env'),
-        '. Keep the same ', h('code', {}, 'WEBHOOK_SECRET'), ' so the BulkVS webhook address still works, and update ', h('code', {}, 'PUBLIC_URL'), ' if the address changes.'),
+        '. Keep the same ', h('code', {}, 'WEBHOOK_SECRET'), ' so the incoming-text address still works, and update ', h('code', {}, 'PUBLIC_URL'), ' if the address changes.'),
       h('li', {}, 'Open the new server and create a temporary admin account (it is replaced by the restore).'),
       h('li', {}, 'Go to Admin settings → Backup → ', h('strong', {}, 'Restore from a backup'), ' and choose the file.'),
-      h('li', {}, 'If the web address changed, update the Message URL in BulkVS (Messaging → Messaging Webhooks) to the new one shown on the BulkVS tab.')));
+      h('li', {}, 'If the web address changed, update the incoming-text address in your provider\'s portal to the new one shown on the Provider tab.')));
 
   return [download, restore, move];
 }

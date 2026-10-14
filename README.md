@@ -1,6 +1,6 @@
 # TextBoss
 
-A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
+A shared SMS/MMS inbox for BulkVS or VoIP.ms phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
 - **Welcome tour:** each person's first sign-in starts a click-through tour that highlights the real parts of the app (conversations, search, writing replies, contacts and bulk texts, notifications, installing it as an app on iPhone, Android, Mac or Windows) and ends with a checklist of setup still to do: notifications, email, two-factor and, for admins, Admin settings. Replay it from ⋮ → Take the tour.
 - **Messages:** conversation list with a number switcher, search (text, names, client ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, and delivery status. Every conversation on a number is one shared thread for the whole team. Texts another staff member sent are tagged with their name and shaded slightly differently; your own are untagged unless you turn on "Show my name on messages I send" in ⋮ → Appearance. Pin and flag from the list (hover a row) or the conversation header; the ⋮ menu also has mark unread, archive, opt out/in, block sender, and (admins only) delete history. Only admins can delete conversations or contacts. Pins and flags are shared by the team. Live updates reconnect on their own when a phone wakes the app or the network changes, and anything missed is fetched; ⋮ → Refresh reloads the app by hand (handy in the home-screen app, which has no reload button).
@@ -14,7 +14,7 @@ A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple num
 - **Contact import:** upload .xls/.xlsx/.csv in Admin settings with a preview, push contacts from other software with an API key, or drop exports into a watched folder. WebPT's "Patient Listing" report is recognized as-is.
 - **Appearance:** each user picks Light / Dark / Auto, a color theme (presets or custom accent and highlight colors), and an app icon design (presets or custom background fade, bubble colors and logo size), saved to their account. The icon is used for the browser tab, sidebar, notifications and, once the app is re-added, the home-screen icon.
 - **Active numbers:** untick numbers you don't use in Admin → Numbers and they disappear from the app; with one active number the number selector is hidden.
-- **Admin settings** in tabs: BulkVS connection (enter and test credentials in the app; these override `.env`), webhook setup and log, numbers, users, contact import and API keys, blocked numbers.
+- **Admin settings** in tabs: texting provider, BulkVS or VoIP.ms (enter and test credentials in the app; these override `.env`), webhook setup and log, numbers, users, contact import and API keys, blocked numbers.
 - **Push notifications:** alerts and an unread badge on the app icon, even when TextBoss is closed. Each device opts in from ⋮ → Notifications (or the bell next to ⋮); once on, the bell pauses and resumes alerts on that device with one click, with an option to hide message text on the lock screen. On iPhone and iPad this needs iOS 16.4+ and the app added to the Home Screen from Safari. Android works in Chrome, Firefox, Edge and Samsung Internet, installed or not; most Android launchers show a dot rather than a number on the icon.
 - Live updates across all signed-in users (server-sent events), and installable on a phone (PWA).
 
@@ -76,10 +76,10 @@ docker compose exec app node src/cli.js make-admin <username>
 
 To move servers:
 1. Download a backup.
-2. Install TextBoss on the new server with the same `.env`. Keep `WEBHOOK_SECRET` so the BulkVS webhook address still works.
+2. Install TextBoss on the new server with the same `.env`. Keep `WEBHOOK_SECRET` so the incoming-text address still works.
 3. Create a temporary admin on the new server.
 4. Restore the backup.
-5. Update the BulkVS Message URL if the domain changed.
+5. Update the incoming-text address in BulkVS or VoIP.ms if the domain changed.
 
 Backups contain client data and saved credentials, so store them privately.
 
@@ -89,11 +89,12 @@ Whatever proxy you use, it must not buffer `/api/events` (server-sent events), o
 
 ### Behind Pangolin
 
-Pangolin's resource authentication (SSO, password or PIN) blocks every request until someone logs in. BulkVS and phone carriers can't log in. Add these **Bypass Auth** rules on the resource's Rules tab:
+Pangolin's resource authentication (SSO, password or PIN) blocks every request until someone logs in. Your texting provider and phone carriers can't log in. Add these **Bypass Auth** rules on the resource's Rules tab:
 
 | Path | Why it must be public |
 | --- | --- |
 | `/webhook/bulkvs/*` | BulkVS posts incoming texts and delivery receipts here |
+| `/webhook/voipms/*` | VoIP.ms sends incoming texts here |
 | `/media/*` | Carriers download the MMS attachments you send from here |
 
 Both are still protected. The webhook path only accepts the secret in `WEBHOOK_SECRET`, and media file names are 128-bit random IDs.
@@ -111,6 +112,16 @@ Other options:
 5. **Numbers in the app.** Add each BulkVS number in Admin settings, then assign numbers to users.
 
 Outbound A2P messaging to US carriers also needs a 10DLC brand and campaign registered in BulkVS for each number. Without it, carriers will filter or reject messages.
+
+## Going live with VoIP.ms
+
+1. **Host it on public HTTPS,** as for BulkVS.
+2. **API access.** In the [VoIP.ms portal](https://voip.ms/), open **Main Menu → SOAP and REST/JSON API**. Set an **API password** (separate from your account password), click **Enable/Disable API** to turn it on, and add your server's public IP address under **Enabled IP Addresses**. VoIP.ms refuses API calls from any other IP.
+3. **Credentials.** In TextBoss, open Admin settings → Provider, choose **VoIP.ms**, enter your VoIP.ms login email and the API password, and click **Save and use VoIP.ms**. It tests the connection straight away. (Or set `VOIPMS_USERNAME` and `VOIPMS_PASSWORD` in `.env`.)
+4. **Incoming texts.** Set `WEBHOOK_SECRET` and restart, then copy the address from Admin settings → Provider (VoIP.ms selected). In VoIP.ms open **DID Numbers → Manage DIDs**, edit each number, turn on SMS/MMS, tick **SMS URL Callback**, paste the address and apply. URL Callback Retry is safe to turn on; TextBoss ignores repeats.
+5. **Numbers in the app.** Add each number in Admin settings → Numbers, then assign numbers to users.
+
+Differences from BulkVS: VoIP.ms can't send group texts (TextBoss won't start one), it doesn't report delivery, so messages stay at Sent, and texts longer than 160 characters or with attachments go out as MMS (up to 2,048 characters and 3 attachments). VoIP.ms also needs 10DLC registration for business texting to US carriers.
 
 ## Importing contacts
 
@@ -160,7 +171,8 @@ src/email.js             SMTP sending, password-reset and sign-in codes by email
 src/security.js          Login throttling and HTTP security headers
 public/sw.js             Service worker: shows push notifications, sets the app badge
 src/bulkvs.js            All BulkVS-specific code (send, connection test, webhook parsing)
-src/provider.js          BulkVS credentials (admin settings, then .env)
+src/voipms.js            All VoIP.ms-specific code (send, connection test, URL callback parsing)
+src/provider.js          Which provider is in use, and its credentials (admin settings, then .env)
 src/db.js                SQLite schema, migrations and access helpers
 src/auth.js              Password hashing (scrypt) and cookie sessions
 src/events.js            Server-sent events hub

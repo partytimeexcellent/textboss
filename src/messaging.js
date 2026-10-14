@@ -9,11 +9,14 @@ import {
   isBlocked,
 } from './db.js';
 import { publish } from './events.js';
-import { isMockMode } from './provider.js';
+import { isMockMode, activeProvider } from './provider.js';
 import { normalizePhone, participantsKey } from './phone.js';
 import { setOptOut, fullName, reactivatePhones } from './contacts.js';
 import { pushToUsers } from './push.js';
 import * as bulkvs from './bulkvs.js';
+import * as voipms from './voipms.js';
+
+const providerApi = () => (activeProvider() === 'voipms' ? voipms : bulkvs);
 
 const MESSAGE_SELECT = `
   SELECT m.*, u.display_name AS sent_by_name
@@ -82,7 +85,9 @@ function insertMessage(conversation, fields) {
 
 // Inbound message from the webhook. `to` may hold several numbers for a group
 // MMS; we file it under whichever of them is one of our numbers.
-export function recordInbound({ from, to, body, media }) {
+export function recordInbound({ from, to, body, media, refId = null }) {
+  // Providers retry a callback they think failed; don't store the same text twice
+  if (refId && db.prepare('SELECT 1 FROM messages WHERE ref_id = ?').get(refId)) return { ok: true, duplicate: true };
   const ours = db.prepare('SELECT * FROM numbers WHERE phone = ?');
   const number = to.map((p) => ours.get(normalizePhone(p))).find(Boolean);
   if (!number) return { ok: false, reason: `none of ${to.join(', ')} is a configured number` };
@@ -93,7 +98,7 @@ export function recordInbound({ from, to, body, media }) {
   const others = [from, ...to].filter((p) => normalizePhone(p) !== number.phone);
   const { conversation, id } = tx(() => {
     const conversation = getOrCreateConversation(number.id, participantsKey(others));
-    const id = insertMessage(conversation, { direction: 'in', from, body, media, status: 'received' });
+    const id = insertMessage(conversation, { direction: 'in', from, body, media, status: 'received', refId });
     return { conversation, id };
   });
   announce(conversation, getMessage(id));
@@ -218,7 +223,7 @@ export async function sendOutbound({ conversation, number, user, body, media = [
   }
 
   try {
-    const { refId, results } = await bulkvs.sendMessage({
+    const { refId, results } = await providerApi().sendMessage({
       from: number.phone,
       to: recipients,
       body,

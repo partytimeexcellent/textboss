@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { config } from './config.js';
-import { isMockMode, bulkvsCredentials } from './provider.js';
+import { isMockMode, providerCredentials, activeProvider, PROVIDERS } from './provider.js';
 import {
   db,
   getOrCreateConversation,
@@ -27,7 +27,8 @@ import {
 } from './auth.js';
 import { subscribe, publish } from './events.js';
 import { normalizePhone, isValidPhone, participantsKey } from './phone.js';
-import { parseWebhook, testConnection } from './bulkvs.js';
+import { parseWebhook, testConnection as testBulkvs } from './bulkvs.js';
+import { parseCallback as parseVoipms, testConnection as testVoipms } from './voipms.js';
 import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcasts } from './messaging.js';
 import { fail } from './http.js';
 import { securityHeaders, assertNotLocked, recordFailure, recordSuccess, mfaKey } from './security.js';
@@ -100,6 +101,45 @@ app.post(
     if (!result.ok) console.warn('webhook not applied:', result.reason, raw.slice(0, 500));
     // Always 200 so BulkVS does not keep retrying a payload we cannot use
     res.json({ ok: true });
+  },
+);
+
+const secretMatches = (given) => {
+  const a = Buffer.from(String(given));
+  const b = Buffer.from(config.webhookSecret);
+  return !!config.webhookSecret && a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
+function logWebhook(raw, result) {
+  db.prepare('INSERT INTO webhook_log (received_at, body, result) VALUES (?, ?, ?)').run(Date.now(), raw, JSON.stringify(result));
+  db.prepare('DELETE FROM webhook_log WHERE id <= (SELECT MAX(id) - 500 FROM webhook_log)').run();
+  if (!result.ok) console.warn('webhook not applied:', result.reason, raw.slice(0, 500));
+}
+
+// VoIP.ms "SMS URL Callback": fields arrive in the URL, after "?" with "&" or
+// straight after the secret with ";" (both are accepted), and VoIP.ms expects
+// the plain text "ok" back or it retries.
+app.all(
+  '/webhook/voipms/:secret',
+  express.urlencoded({ extended: false, limit: '1mb' }),
+  (req, res) => {
+    const marker = '/webhook/voipms/';
+    const tail = req.originalUrl.slice(req.originalUrl.indexOf(marker) + marker.length);
+    const secret = decodeURIComponent(tail.split(/[;?]/)[0]);
+    if (!secretMatches(secret)) return res.sendStatus(404);
+
+    let query = tail.slice(tail.split(/[;?]/)[0].length);
+    if (req.method === 'POST' && req.body && Object.keys(req.body).length) query = `?${new URLSearchParams(req.body)}`;
+    const raw = `${req.method} ${query}`;
+    let result;
+    try {
+      const event = parseVoipms(query);
+      result = event ? recordInbound(event) : { ok: false, reason: 'unrecognized callback (needs to and from)' };
+    } catch (err) {
+      result = { ok: false, reason: err.message };
+    }
+    logWebhook(raw, result);
+    res.type('text/plain').send('ok');
   },
 );
 
@@ -411,6 +451,7 @@ api.get('/me', (req, res) => {
     },
     numbers,
     mockMode: isMockMode(),
+    provider: activeProvider(),
     security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled },
     tourDone: !!db.prepare('SELECT tour_done_at FROM users WHERE id = ?').get(req.user.id).tour_done_at,
     theme: JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? 'null'),
@@ -615,6 +656,9 @@ api.post('/conversations', (req, res) => {
   const bad = to.filter((p) => !isValidPhone(p));
   if (bad.length) fail(400, `Not a valid phone number: ${bad.join(', ')}`);
   if (to.length > 10) fail(400, 'Group messages are limited to 10 recipients');
+  if (to.length > 1 && activeProvider() === 'voipms' && !isMockMode()) {
+    fail(400, 'VoIP.ms can\'t send group texts. Text each person separately, or use a bulk message to reach several people.');
+  }
 
   const conversation = getOrCreateConversation(numberId, participantsKey(to));
   res.json({ id: conversation.id });
@@ -958,58 +1002,85 @@ admin.post('/restore', express.raw({ type: () => true, limit: '2gb' }), (req, re
   setTimeout(() => process.exit(0), 800);
 });
 
-// ----- Provider (BulkVS) credentials -----
+// ----- Texting provider (BulkVS or VoIP.ms) -----
 
-// The password is never sent back; only whether one is saved and its last 4 characters
-function providerStatus() {
-  const creds = bulkvsCredentials();
+const webhookUrls = () => (config.webhookSecret
+  ? {
+      bulkvs: `${config.publicUrl}/webhook/bulkvs/${config.webhookSecret}`,
+      voipms: `${config.publicUrl}/webhook/voipms/${config.webhookSecret}?to={TO}&from={FROM}&message={MESSAGE}&id={ID}&date={TIMESTAMP}&media={MEDIA}`,
+    }
+  : { bulkvs: null, voipms: null });
+
+// Passwords are never sent back; only whether one is saved and its last 4 characters
+function providerStatus(id) {
+  const creds = providerCredentials(id);
   return {
-    provider: 'bulkvs',
+    name: PROVIDERS[id],
     source: creds.source, // 'admin' | 'env' | null
     username: creds.username ?? '',
     passwordSet: !!creds.password,
     passwordHint: creds.password ? `…${creds.password.slice(-4)}` : '',
-    mockMode: isMockMode(),
-    envConfigured: !!config.bulkvs.username,
+    envConfigured: !!config[id].username,
   };
 }
+const providerOverview = () => ({
+  active: activeProvider(),
+  mockMode: isMockMode(),
+  providers: Object.fromEntries(Object.keys(PROVIDERS).map((id) => [id, providerStatus(id)])),
+  webhooks: webhookUrls(),
+});
+const providerId = (v) => {
+  if (!PROVIDERS[v]) fail(400, 'Choose BulkVS or VoIP.ms');
+  return v;
+};
 
-admin.get('/provider', (_req, res) => res.json(providerStatus()));
+admin.get('/provider', (_req, res) => res.json(providerOverview()));
 
-// Blank fields mean "keep what's in use now" (saved in the app or from .env).
-// Everything is validated before anything is written.
+// Saves credentials and makes that provider the one in use. Blank fields mean
+// "keep what's in use now" (saved in the app or from .env). Everything is
+// validated before anything is written.
 admin.put('/provider', (req, res) => {
-  const current = bulkvsCredentials();
+  const id = providerId(req.body?.provider ?? 'bulkvs');
+  const current = providerCredentials(id);
   const username = String(req.body?.username ?? '').trim() || current.username;
   const password = String(req.body?.password ?? '').trim();
-  if (!username) fail(400, 'Enter the API username');
-  if (!password && !current.password) fail(400, 'Enter the API password/token');
-  setSetting('bulkvs.username', username);
-  if (password) setSetting('bulkvs.password', password);
-  res.json(providerStatus());
+  if (!username) fail(400, id === 'voipms' ? 'Enter your VoIP.ms login email' : 'Enter the API username');
+  if (!password && !current.password) fail(400, id === 'voipms' ? 'Enter the VoIP.ms API password' : 'Enter the API password/token');
+  setSetting(`${id}.username`, username);
+  if (password) setSetting(`${id}.password`, password);
+  setSetting('provider.active', id);
+  res.json(providerOverview());
+});
+
+// Switch providers without changing credentials
+admin.put('/provider/active', (req, res) => {
+  setSetting('provider.active', providerId(req.body?.provider));
+  res.json(providerOverview());
 });
 
 // Deliberately forget credentials saved in the app (falls back to .env, or mock mode)
-admin.delete('/provider', (_req, res) => {
-  setSetting('bulkvs.username', null);
-  setSetting('bulkvs.password', null);
-  res.json(providerStatus());
+admin.delete('/provider', (req, res) => {
+  const id = providerId(req.query.provider ?? 'bulkvs');
+  setSetting(`${id}.username`, null);
+  setSetting(`${id}.password`, null);
+  res.json(providerOverview());
 });
 
 admin.post('/provider/test', async (req, res) => {
-  const current = bulkvsCredentials();
+  const id = providerId(req.body?.provider ?? activeProvider());
+  const current = providerCredentials(id);
   const username = String(req.body?.username ?? '').trim();
   const password = String(req.body?.password ?? '').trim();
   // Test what's typed in the form, falling back to the saved password
   const creds = username
     ? { ...current, username, password: password || (username === current.username ? current.password : '') }
     : current;
-  res.json(await testConnection(creds));
+  res.json(await (id === 'voipms' ? testVoipms(creds) : testBulkvs(creds)));
 });
 
 admin.get('/webhook-log', (_req, res) => {
   res.json({
-    url: config.webhookSecret ? `${config.publicUrl}/webhook/bulkvs/${config.webhookSecret}` : null,
+    url: webhookUrls()[activeProvider()],
     entries: db.prepare('SELECT * FROM webhook_log ORDER BY id DESC LIMIT 50').all(),
   });
 });
@@ -1131,6 +1202,6 @@ startIdleJob();
 
 app.listen(config.port, () => {
   console.log(`TextBoss listening on http://localhost:${config.port}`);
-  console.log(isMockMode() ? 'Mock mode: no BulkVS credentials set, messages are not really sent.' : 'BulkVS mode.');
+  console.log(isMockMode() ? `Mock mode: no ${PROVIDERS[activeProvider()]} credentials set, messages are not really sent.` : `Sending through ${PROVIDERS[activeProvider()]}.`);
   if (!config.webhookSecret) console.log('WEBHOOK_SECRET is not set, so inbound messages are disabled.');
 });
