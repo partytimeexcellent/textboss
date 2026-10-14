@@ -353,7 +353,7 @@ function securityPolicyCard(security, users) {
     }
   } });
   return card('Sign-in security',
-    'Two-factor sign-in asks for a code from an authenticator app or a passkey (Face ID, Touch ID, Windows Hello, a security key) after the password. Each person sets it up under ⋮ → Security.',
+    'Two-factor sign-in asks for a code from an authenticator app or a passkey (Face ID, Touch ID, Windows Hello, a security key) after the password. Each person sets it up under ⋮ → My account.',
     h('label', { class: 'switch-label' }, toggle,
       h('span', {}, h('strong', {}, 'Require two-factor sign-in for everyone'),
         h('span', { class: 'hint' }, ' — people without it are taken through setup the next time they use TextBoss.'))),
