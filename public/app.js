@@ -313,6 +313,15 @@ function renderSetupRequired() {
   });
 }
 
+// The manual and both tours, in one place
+function openHelpMenu(anchor) {
+  openMenu(anchor, [
+    ['User manual', () => window.open('/manual/', '_blank', 'noopener')],
+    ['Welcome tour', runTour],
+    ['Tips and newer features', runTips],
+  ], 'Help');
+}
+
 // ---------- Welcome tour ----------
 
 function runTips() {
@@ -379,6 +388,9 @@ function renderShell() {
       state.mockMode && h('div', { class: 'mock-banner' }, 'Mock mode: messages are not really sent.'),
       state.security?.remind && mfaBanner(),
       els.sideBody,
+      // Reloads the app; handy in the installed app, which has no reload button
+      h('div', { class: 'side-foot' },
+        h('button', { class: 'refresh-btn', title: 'Reload TextBoss', onclick: () => location.reload() }, icon('refresh'), h('span', {}, 'Refresh'))),
     ),
     els.main,
   );
@@ -439,19 +451,15 @@ function placeholder(text) {
 
 function openUserMenu(anchor) {
   openMenu(anchor, [
-    ['Canned responses', () => (location.hash = '#/canned')],
+    ['My account', () => (location.hash = '#/security')],
     ['Appearance', () => themePicker(state.theme, (t) => {
       state.theme = t;
       for (const p of panes.values()) renderPaneMessages(p);
     })],
-    ['Security', () => (location.hash = '#/security')],
-    state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
-    ['Help and user manual', () => window.open('/manual/', '_blank', 'noopener')],
-    ['Take the tour', runTour],
-    ['Tips and newer features', runTips],
-    ['Refresh', () => location.reload()],
     ['Notifications', async () => (await notificationsDialog()).addEventListener('close', refreshBell)],
-    ['Change password', changePasswordDialog],
+    ['Canned responses', () => (location.hash = '#/canned')],
+    state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
+    ['Help ›', () => openHelpMenu(anchor)],
     ['Sign out', async () => {
       await api('/logout', { method: 'POST' });
       state.me = null;
@@ -459,24 +467,6 @@ function openUserMenu(anchor) {
       render();
     }],
   ], `Signed in as ${state.me.displayName}`);
-}
-
-function changePasswordDialog() {
-  dialog(
-    'Change password',
-    [
-      h('label', {}, 'Current password', h('input', { type: 'password', name: 'current', required: true, autocomplete: 'current-password' })),
-      h('label', {}, 'New password', h('input', { type: 'password', name: 'next', required: true, minLength: 10, autocomplete: 'new-password' })),
-      h('p', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.'),
-      h('label', {}, 'Confirm new password', h('input', { type: 'password', name: 'confirm', required: true, autocomplete: 'new-password' })),
-    ],
-    'Save',
-    async (data) => {
-      if (data.get('next') !== data.get('confirm')) throw new Error('The two passwords don\'t match');
-      await api('/me/password', { method: 'POST', body: { current: data.get('current'), next: data.get('next') } });
-      toast('Password changed');
-    },
-  );
 }
 
 // ---------- New version available ----------

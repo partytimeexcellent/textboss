@@ -43,7 +43,7 @@ export async function emailReminders(now = Date.now()) {
       await sendMail({
         to: u.email,
         subject: 'Reminder: protect your TextBoss account',
-        text: `Hi ${u.display_name},\n\nYour TextBoss account is protected only by a password. Two-factor sign-in adds a second step, like Face ID, Touch ID, Windows Hello or a code from an authenticator app, so client messages stay safe even if your password leaks.\n\nIt takes about a minute: open TextBoss, then ⋮ → Security.\n${config.publicUrl}/#/security\n\nAdd a passkey on each phone and computer you use. You'll get this reminder once a day until it's set up.\n`,
+        text: `Hi ${u.display_name},\n\nYour TextBoss account is protected only by a password. Two-factor sign-in adds a second step, like Face ID, Touch ID, Windows Hello or a code from an authenticator app, so client messages stay safe even if your password leaks.\n\nIt takes about a minute: open TextBoss, then ⋮ → My account.\n${config.publicUrl}/#/security\n\nAdd a passkey on each phone and computer you use. You'll get this reminder once a day until it's set up.\n`,
       });
       sent++;
     } catch (err) {

@@ -1,5 +1,5 @@
 // Guided tour: a click-through overlay that spotlights parts of the real app,
-// shown once on a person's first sign-in and again from ⋮ → Take the tour.
+// shown once on a person's first sign-in and again from ⋮ → Help → Welcome tour.
 // Ends with a checklist of setup still to do on this account and device.
 
 import { h, fill, icon, state, api } from './core.js';
@@ -166,7 +166,7 @@ function steps(actions) {
       target: '.side-top .icon-btn[title=Menu]', before: goHome,
       title: 'The menu',
       body: [
-        'Security (passkeys, sign-in codes and your email), Appearance (colors and your own app icon), Refresh, Help (the full user manual) and this tour again.',
+        'My account (password, passkeys and your email), Appearance (colors and your own app icon), Notifications, and Help: the full user manual and this tour again.',
         admin ? 'Admin settings live here too: your texting provider, numbers, users, email and contact imports.' : null,
       ],
     },
@@ -280,7 +280,7 @@ function tipSteps() {
     },
     {
       title: 'The user manual',
-      body: ['Everything TextBoss does is explained, with pictures, in the user manual. Open it any time from ⋮ → Help and user manual.'],
+      body: ['Everything TextBoss does is explained, with pictures, in the user manual. Open it any time from ⋮ → Help → User manual.'],
       link: { label: 'Open the user manual', href: '/manual/' },
     },
   ];
@@ -383,7 +383,7 @@ export async function startTour({ onFinish, actions, list: given }) {
         h('span', { class: 'tour-check', 'aria-hidden': 'true' }, x.done ? '✓' : ''),
         h('div', {}, h('strong', {}, x.title, x.done && h('span', { class: 'sr-only' }, ' (done)')), h('div', { class: 'hint' }, x.text)),
         !x.done && x.run && h('button', { class: 'btn', onclick: () => { finish(); x.run(); } }, x.label)))),
-      h('p', { class: 'hint' }, 'Replay this tour any time from ⋮ → Take the tour.'),
+      h('p', { class: 'hint' }, 'Replay this tour any time from ⋮ → Help → Welcome tour.'),
     ];
   }
 

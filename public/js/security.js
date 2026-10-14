@@ -169,6 +169,33 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
         }
       } }, 'Send me a test email')));
 
+  // ----- Password -----
+  const current = h('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const next = h('input', { type: 'password', autocomplete: 'new-password', minLength: 10, required: true });
+  const confirm = h('input', { type: 'password', autocomplete: 'new-password', required: true });
+  const pwError = h('div', { class: 'form-error' });
+  const passwordCard = !forced && card('Password',
+    'At least 10 characters, not a common password, and not your name. A few unrelated words work well.',
+    h('form', { class: 'password-form', onsubmit: async (e) => {
+      e.preventDefault();
+      pwError.textContent = '';
+      if (next.value !== confirm.value) return (pwError.textContent = 'The two passwords don\'t match');
+      try {
+        await api('/me/password', { method: 'POST', body: { current: current.value, next: next.value } });
+        toast('Password changed');
+        e.target.reset();
+      } catch (err) {
+        pwError.textContent = err.message;
+      }
+    } },
+      h('div', { class: 'form-grid' },
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Current password'), current),
+        h('div'),
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'New password'), next),
+        h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Confirm new password'), confirm)),
+      pwError,
+      h('div', { class: 'card-actions' }, h('button', { class: 'btn primary', type: 'submit' }, 'Change password'))));
+
   // ----- Sessions -----
   const sessionsCard = !forced && card('Signed-in devices',
     `You're signed in on ${s.sessions} device${s.sessions === 1 ? '' : 's'} or browser${s.sessions === 1 ? '' : 's'}.`,
@@ -187,15 +214,16 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
 
   fill(container,
     summary,
+    passwordCard,
     card('Authenticator app', 'Six-digit codes from an app on your phone. Works on iPhone, Android and every computer.', totpBody),
     passkeyCard,
     emailCard,
     sessionsCard);
 }
 
-// #/security page
+// #/security: My account (password, two-factor sign-in, email, devices)
 export function renderSecurityPage(main) {
   const body = h('div', { class: 'admin-page' });
-  fill(main, paneHead('Security', h('div', { style: 'flex:1' }), helpLink('security')), body);
+  fill(main, paneHead('My account', h('div', { style: 'flex:1' }), helpLink('security')), body);
   renderSecurity(body);
 }

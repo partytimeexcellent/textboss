@@ -29,6 +29,7 @@ const ICONS = {
   send: svg('<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>', 2.4),
   attach: svg('<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>'),
   user: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+  refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>'),
   sidepanel: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>'),
   archive: svg('<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/>'),
   canned: svg('<path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><path d="m16 16 2 2 4-4"/>'),
@@ -359,11 +360,15 @@ export function confirmOptOutDialog(phones) {
 
 export function openMenu(anchor, items, header) {
   document.querySelector('.menu')?.remove();
+  // Closes on a click elsewhere, Escape, or moving to another page
   const close = () => {
     menu.remove();
     document.removeEventListener('mousedown', outside);
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('hashchange', close);
   };
   const outside = (e) => !menu.contains(e.target) && close();
+  const onKey = (e) => e.key === 'Escape' && close();
   const menu = h(
     'div',
     { class: 'menu' },
@@ -376,7 +381,11 @@ export function openMenu(anchor, items, header) {
   const top = r.bottom + 4 + menu.offsetHeight > innerHeight ? Math.max(8, r.top - menu.offsetHeight - 4) : r.bottom + 4;
   menu.style.top = `${top}px`;
   menu.style.left = `${Math.max(8, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
-  setTimeout(() => document.addEventListener('mousedown', outside));
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('hashchange', close);
+  });
 }
 
 export function backButton(to = '#/') {

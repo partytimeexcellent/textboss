@@ -188,7 +188,8 @@ console.log('Taking screenshots…');
 
   await go(page, `#/c/${ids.thornton}`, '.pane .composer');
   await page.click('.side-top [title="Menu"]');
-  await clickText(page, 'Take the tour', '.menu');
+  await clickText(page, 'Help ›', '.menu');
+  await clickText(page, 'Welcome tour', '.menu');
   await page.waitForSelector('.tour-card', { visible: true });
   await wait(500);
   await shot(page, 'tour');

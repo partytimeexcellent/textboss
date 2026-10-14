@@ -590,7 +590,7 @@ async function renderEmail() {
   const users = await api('/admin/users');
   const missing = users.filter((u) => !u.email);
   const people = card('Staff email addresses',
-    'Each person can add their own under ⋮ → Security, or you can add them under Users → Edit.',
+    'Each person can add their own under ⋮ → My account, or you can add them under Users → Edit.',
     missing.length
       ? h('p', { class: 'hint' }, `No email yet: ${missing.map((u) => u.displayName).join(', ')}. They can't reset their own password or get emailed codes.`)
       : h('p', { class: 'ok' }, '✓ Everyone has an email address.'));

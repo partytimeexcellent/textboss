@@ -50,7 +50,7 @@ switch (command) {
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), user.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id); // sign out everywhere
     console.log(`Password for "${user.username}" reset.`);
-    if (!password) console.log(`Temporary password: ${next}\nSign in with it, then change it under ⋮ → Change password.`);
+    if (!password) console.log(`Temporary password: ${next}\nSign in with it, then change it under ⋮ → My account.`);
     break;
   }
   case 'reset-2fa': {
@@ -58,7 +58,7 @@ switch (command) {
     resetMfa(user.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
     console.log(`Two-factor sign-in removed for "${user.username}" (authenticator app and passkeys).`);
-    console.log('They can sign in with their password and set it up again under ⋮ → Security.');
+    console.log('They can sign in with their password and set it up again under ⋮ → My account.');
     break;
   }
   case 'make-admin': {

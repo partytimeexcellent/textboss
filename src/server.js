@@ -951,7 +951,7 @@ admin.post('/email/test', async (req, res) => {
 admin.put('/security', (req, res) => {
   if ('require2fa' in (req.body ?? {})) {
     if (req.body.require2fa && !mfa.mfaStatus(req.user.id).enabled) {
-      fail(400, 'Set up two-factor sign-in on your own account first (⋮ → Security), so you are not locked out.');
+      fail(400, 'Set up two-factor sign-in on your own account first (⋮ → My account), so you are not locked out.');
     }
     setSetting('security.require2fa', req.body.require2fa ? '1' : null);
   }
