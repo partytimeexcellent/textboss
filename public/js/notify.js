@@ -232,7 +232,7 @@ export async function notificationsDialog() {
       isMacBrowserTab() && h('p', { class: 'hint' },
         'Tip: for alerts that show the TextBoss name and icon instead of the browser and web address, install it as an app. In Safari choose File → Add to Dock (in Chrome: ⋮ → Cast, save and share → Install page as app), then turn notifications on from the installed app and off here.'),
       h('label', { class: 'switch-label' }, preview,
-        h('span', {}, 'Show message text', h('span', { class: 'hint' }, ' — otherwise alerts just say "New message", so patient names and messages never appear on a locked screen.'))),
+        h('span', {}, 'Show message text', h('span', { class: 'hint' }, ' — otherwise alerts just say "New message", so client names and messages never appear on a locked screen.'))),
       h('div', { class: 'card-actions' },
         !on && h('button', { type: 'button', class: 'btn primary', onclick: run(async () => {
           await subscribe(preview.checked);

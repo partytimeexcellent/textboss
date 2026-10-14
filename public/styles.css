@@ -739,3 +739,5 @@ a.btn.primary { color: var(--accent-text); }
 .tour-checklist li.done .tour-check { background: var(--ok); border-color: var(--ok); color: #fff; }
 .tour-checklist li.done strong { color: var(--text-muted); text-decoration: line-through; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.missing-picker { display: grid; gap: 8px; }
+.missing-picker .table-wrap.scroll { max-height: 320px; }

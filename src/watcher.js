@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
-import { parseContactFile, upsertContacts, logImport } from './contacts.js';
+import { parseContactFile, upsertContacts, logImport, applyAutoInactivate } from './contacts.js';
 import { publish } from './events.js';
 import { allUserIds } from './db.js';
 
@@ -46,9 +46,12 @@ function poll() {
     try {
       const { records } = parseContactFile(fs.readFileSync(file));
       const result = upsertContacts(records);
+      const skipped = applyAutoInactivate(result);
       logImport('folder', name, result);
       move(file, 'processed');
-      console.log(`Imported ${name}: ${result.created} new, ${result.updated} updated, ${result.skipped} skipped`);
+      console.log(`Imported ${name}: ${result.created} new, ${result.updated} updated, ${result.skipped} skipped`
+        + (result.autoInactivated ? `, ${result.missingCount} no longer listed marked inactive` : '')
+        + (skipped ? `; marking missing clients inactive ${skipped}` : ''));
       publish(allUserIds(), 'contacts', {});
     } catch (err) {
       logImport('folder', name, null, err.message);

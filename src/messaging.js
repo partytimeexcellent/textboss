@@ -11,7 +11,7 @@ import {
 import { publish } from './events.js';
 import { isMockMode } from './provider.js';
 import { normalizePhone, participantsKey } from './phone.js';
-import { setOptOut, fullName } from './contacts.js';
+import { setOptOut, fullName, reactivatePhones } from './contacts.js';
 import { pushToUsers } from './push.js';
 import * as bulkvs from './bulkvs.js';
 
@@ -75,6 +75,8 @@ function insertMessage(conversation, fields) {
     now,
     conversation.id,
   );
+  // Texting with an inactive contact makes them active again
+  reactivatePhones(conversation.participants.split(','));
   return Number(lastInsertRowid);
 }
 

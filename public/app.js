@@ -591,7 +591,7 @@ function renderMessagesSidebar() {
   let searchTimer;
   const search = h('input', {
     type: 'search',
-    placeholder: 'Search messages, names, patient ID',
+    placeholder: 'Search messages, names, client ID',
     value: state.search,
     oninput: (e) => {
       clearTimeout(searchTimer);
@@ -779,7 +779,7 @@ function renderNewMessage() {
 
   const chips = h('div', { class: 'chips' });
   const suggest = h('div', { class: 'suggest', hidden: true });
-  const input = h('input', { type: 'text', placeholder: 'Name, phone or patient ID', autocomplete: 'off' });
+  const input = h('input', { type: 'text', placeholder: 'Name, phone or client ID', autocomplete: 'off' });
   const error = h('div', { class: 'form-error' });
 
   const addRecipient = (phone) => {

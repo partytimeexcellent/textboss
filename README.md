@@ -3,9 +3,10 @@
 A shared SMS/MMS inbox for BulkVS phone numbers. Multiple users and multiple numbers, and each user sees only the numbers an admin assigns to them.
 
 - **Welcome tour:** each person's first sign-in starts a click-through tour that highlights the real parts of the app (conversations, search, writing replies, contacts and bulk texts, notifications, installing it as an app on iPhone, Android, Mac or Windows) and ends with a checklist of setup still to do: notifications, email, two-factor and, for admins, Admin settings. Replay it from ⋮ → Take the tour.
-- **Messages:** conversation list with a number switcher, search (text, names, patient ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, and delivery status. Every conversation on a number is one shared thread for the whole team. Texts another staff member sent are tagged with their name and shaded slightly differently; your own are untagged unless you turn on "Show my name on messages I send" in ⋮ → Appearance. Pin and flag from the list (hover a row) or the conversation header; the ⋮ menu also has mark unread, archive, opt out/in, block sender, and (admins only) delete history. Only admins can delete conversations or contacts. Pins and flags are shared by the team. Live updates reconnect on their own when a phone wakes the app or the network changes, and anything missed is fetched; ⋮ → Refresh reloads the app by hand (handy in the home-screen app, which has no reload button).
+- **Messages:** conversation list with a number switcher, search (text, names, client ID), unread counts, and All / Unread / Flagged / Archived filters. 1:1 and group threads, MMS attachments with a download button, an emoji picker, and delivery status. Every conversation on a number is one shared thread for the whole team. Texts another staff member sent are tagged with their name and shaded slightly differently; your own are untagged unless you turn on "Show my name on messages I send" in ⋮ → Appearance. Pin and flag from the list (hover a row) or the conversation header; the ⋮ menu also has mark unread, archive, opt out/in, block sender, and (admins only) delete history. Only admins can delete conversations or contacts. Pins and flags are shared by the team. Live updates reconnect on their own when a phone wakes the app or the network changes, and anything missed is fetched; ⋮ → Refresh reloads the app by hand (handy in the home-screen app, which has no reload button).
 - **Side-by-side conversations (desktop):** open up to three conversations at once with Cmd/Ctrl-click or the Open beside button on a list row. A normal click replaces the active pane, and each pane has its own message box, menu and close button. Narrower windows show as many as fit; phones show one.
-- **Contacts:** first/last name, nickname (shown as "(Bobby) Robert Smith"), mobile phone, date of birth, email, patient ID, notes and opt-out. Several contacts can share one phone (a parent and children).
+- **Contacts:** first/last name, nickname (shown as "(Bobby) Robert Smith"), mobile phone, date of birth, email, client ID, notes and opt-out. Several contacts can share one phone (a parent and children).
+- **Inactive contacts:** when an uploaded import is a full client list (most rows have a client ID), the preview lists clients in TextBoss who aren't in the file, such as discharged clients, with checkboxes to mark them inactive. Imports from the watched folder or the API keep that list for **Review** in the import history, or the watched folder can mark them inactive automatically (Admin → Contacts & Import → Inactive contacts; skipped if more than half would go at once, which looks like a partial export). Contacts can also go inactive after a chosen time with no activity (6 months to 3 years, or a custom number of days), or be marked inactive by hand on the contact page. Inactive contacts are hidden from Contacts, searches, list counts and bulk messages, but keep their names on conversations. Any text to or from them, or appearing in a later import, makes them active again. Browse and reactivate them under Admin → Contacts & Import.
 - **Opt-out:** applies to the phone number. Texting an opted-out number brings up a warning you must confirm by typing SEND, and the server enforces it. Replies of STOP, UNSUBSCRIBE, etc. opt out automatically, and START opts back in.
 - **Blocked senders:** their texts are dropped. Manage them in Admin settings.
 - **Lists and bulk messages:** tick contacts (or "select all" on a search or list), save them as a named list, and send everyone an individual text with merge fields (`{first_name}`, `{last_name}`, `{full_name}`, `{nickname}`). Sends run in the background at one per second, skipping opted-out and blocked numbers, with a live progress page.
@@ -80,7 +81,7 @@ To move servers:
 4. Restore the backup.
 5. Update the BulkVS Message URL if the domain changed.
 
-Backups contain patient data and saved credentials, so store them privately.
+Backups contain client data and saved credentials, so store them privately.
 
 From the command line, `docker compose cp app:/app/data ./backup-$(date +%F)` copies the raw data folder. Stop the app first so the database copy is consistent.
 
@@ -113,16 +114,16 @@ Outbound A2P messaging to US carriers also needs a 10DLC brand and campaign regi
 
 ## Importing contacts
 
-Built for importing the full WebPT patient list over and over. Each run updates what changed, such as a new phone number, and counts everything else as unchanged. Because WebPT is the source of truth, a phone number corrected only in TextBoss is overwritten on the next import, so fix data in WebPT.
+Built for importing the full WebPT client list over and over. Each run updates what changed, such as a new phone number, and counts everything else as unchanged. Because WebPT is the source of truth, a phone number corrected only in TextBoss is overwritten on the next import, so fix data in WebPT.
 
 All three import paths use the same rules:
 - **Header row:** found automatically, even below report title rows. It must have a name column and a phone column.
 - **Phone:** the cell phone is used, then a generic phone, then home, then work.
-- **Matching:** existing contacts are matched by patient ID, or by phone plus name when there's no ID, and updated rather than duplicated.
+- **Matching:** existing contacts are matched by client ID, or by phone plus name when there's no ID, and updated rather than duplicated.
 - **Never destructive:** imports never delete contacts or clear fields the file doesn't include, such as notes.
-- **Bad values:** an invalid phone, email or date of birth doesn't skip the patient. That one value is left out (an existing good value is kept) and listed under "Problems to fix" with the spreadsheet row, name and patient ID. You can download that list as a CSV.
+- **Bad values:** an invalid phone, email or date of birth doesn't skip the client. That one value is left out (an existing good value is kept) and listed under "Problems to fix" with the spreadsheet row, name and client ID. You can download that list as a CSV.
 
-Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Patient ID` / `Patient ID` / `MRN`, `Notes`, `Opt Out`.
+Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` / `Client Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Client ID` / `Patient ID` / `MRN`, `Notes`, `Opt Out`.
 
 - **Upload:** Admin settings → Import contacts. It shows a preview, with new, updated and skipped counts, before saving.
 - **Watched folder:** files saved into `import/` (Docker) or `data/import/` (local) are imported within a minute, then moved to `processed/` or `failed/`. Results appear under Admin settings → Recent imports. The export software can save straight into this folder, or into a network share mounted there.

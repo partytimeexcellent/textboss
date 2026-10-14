@@ -77,7 +77,7 @@ function steps(actions) {
     {
       title: `Welcome to TextBoss, ${state.me.displayName.split(' ')[0]}`,
       body: [
-        'TextBoss is your team\'s shared inbox for texting patients from the practice\'s phone numbers.',
+        'TextBoss is your team\'s shared inbox for texting clients from the practice\'s phone numbers.',
         'This quick tour shows you around in about a minute. Use Next, or the arrow keys.',
       ],
     },
@@ -98,12 +98,12 @@ function steps(actions) {
     {
       target: '.side-head input[type=search]', before: goHome,
       title: 'Search',
-      body: ['Find any conversation by message text, a patient\'s name, phone number or patient ID.'],
+      body: ['Find any conversation by message text, a client\'s name, phone number or client ID.'],
     },
     {
       target: '.filter-chips', before: goHome,
       title: 'Filters',
-      body: ['Show only unread or flagged conversations. Archived ones are tucked away here too, and come back by themselves when the patient texts again.'],
+      body: ['Show only unread or flagged conversations. Archived ones are tucked away here too, and come back by themselves when the client texts again.'],
     },
     {
       target: '.new-btn', before: goHome,
@@ -115,8 +115,8 @@ function steps(actions) {
       title: 'A conversation',
       body: [
         isPhone()
-          ? 'Up top: the patient\'s contact card, and ⋮ to pin, flag, mark as unread, archive, opt out or block a sender. The arrow takes you back to the list.'
-          : 'Up top: pin, flag, the patient\'s contact card, and ⋮ for more, like mark as unread, archive, opt out or block a sender.',
+          ? 'Up top: the client\'s contact card, and ⋮ to pin, flag, mark as unread, archive, opt out or block a sender. The arrow takes you back to the list.'
+          : 'Up top: pin, flag, the client\'s contact card, and ⋮ for more, like mark as unread, archive, opt out or block a sender.',
         admin ? 'As an admin you can also delete a conversation\'s history from ⋮.' : null,
       ],
     },
@@ -124,7 +124,7 @@ function steps(actions) {
       target: '.pane .messages', when: () => hasConv, before: openFirstConversation, place: 'over',
       title: 'Who said what',
       body: [
-        'Patients are on the left and the practice is on the right.',
+        'Clients are on the left and the practice is on the right.',
         'Texts a teammate sent show their name and a slightly different shade, so you know who already replied. You can label your own too under ⋮ → Appearance.',
       ],
     },
@@ -132,8 +132,8 @@ function steps(actions) {
       target: '.pane .composer-tools', when: () => hasConv, before: openFirstConversation,
       title: 'Writing a reply',
       body: [
-        'Attach photos or PDFs, add an emoji, or insert a canned response: a saved reply that can fill in the patient\'s name for you.',
-        'If a patient opted out of texts, TextBoss warns you before anything is sent.',
+        'Attach photos or PDFs, add an emoji, or insert a canned response: a saved reply that can fill in the client\'s name for you.',
+        'If a client opted out of texts, TextBoss warns you before anything is sent.',
       ],
     },
     {
@@ -145,15 +145,15 @@ function steps(actions) {
       target: '.tabs a[data-tab=contacts]', before: goHome,
       title: 'Contacts',
       body: [
-        'Patients\' names, phone numbers, birthdays and notes. Select several to put them in a list, then text the whole list at once, for example to announce a weather closure.',
-        'Each patient gets their own copy, and anyone who opted out is skipped.',
+        'Clients\' names, phone numbers, birthdays and notes. Select several to put them in a list, then text the whole list at once, for example to announce a weather closure.',
+        'Each client gets their own copy, and anyone who opted out is skipped.',
       ],
     },
     {
       target: '.bell-btn', before: goHome,
       title: 'Notifications',
       body: [
-        'Get an alert when a patient texts, even when TextBoss is closed. Each phone and computer is set up once.',
+        'Get an alert when a client texts, even when TextBoss is closed. Each phone and computer is set up once.',
         'After that, tap the bell to pause alerts on this device and tap it again to turn them back on.',
       ],
     },
@@ -181,7 +181,7 @@ async function checklistItems(actions) {
     {
       done: bell === 'on' || bell === 'paused',
       title: 'Turn on notifications on this device',
-      text: isIos() && !isStandalone() ? 'On iPhone, add TextBoss to your Home Screen first (below).' : 'So you know when a patient texts.',
+      text: isIos() && !isStandalone() ? 'On iPhone, add TextBoss to your Home Screen first (below).' : 'So you know when a client texts.',
       label: 'Turn on', run: actions.notifications,
     },
     {
@@ -193,7 +193,7 @@ async function checklistItems(actions) {
     {
       done: !!sec.enabled,
       title: 'Turn on two-factor sign-in',
-      text: 'A passkey (Face ID, Touch ID, Windows Hello) or an authenticator app keeps patient messages safe. Add a passkey on each device you use.',
+      text: 'A passkey (Face ID, Touch ID, Windows Hello) or an authenticator app keeps client messages safe. Add a passkey on each device you use.',
       label: 'Set up', run: actions.security,
     },
   ];

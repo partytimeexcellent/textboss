@@ -399,7 +399,7 @@ async function renderEmail() {
 
 // ---------- Contacts & import ----------
 
-const FIELD_NAMES = { firstName: 'First name', lastName: 'Last name', nickname: 'Nickname', phone: 'Phone', dob: 'Date of birth', email: 'Email', patientId: 'Patient ID', notes: 'Notes' };
+const FIELD_NAMES = { firstName: 'First name', lastName: 'Last name', nickname: 'Nickname', phone: 'Phone', dob: 'Date of birth', email: 'Email', patientId: 'Client ID', notes: 'Notes' };
 const showValue = (field, v) => (field === 'phone' ? formatPhone(v) : field === 'dob' ? formatDob(v) : v) || '(empty)';
 
 function csvDownload(filename, rows) {
@@ -415,10 +415,35 @@ function stat(label, value, kind = '') {
   return h('div', { class: `stat ${kind}` }, h('div', { class: 'stat-value' }, value.toLocaleString()), h('div', { class: 'stat-label' }, label));
 }
 
+// Checkbox list of clients missing from an import, all ticked to start
+function missingPicker(list) {
+  const checks = list.map((m) => h('input', { type: 'checkbox', checked: true, value: String(m.id) }));
+  const count = h('span', { class: 'hint' });
+  const sync = () => (count.textContent = `${checks.filter((c) => c.checked).length.toLocaleString()} of ${list.length.toLocaleString()} ticked`);
+  checks.forEach((c) => c.addEventListener('change', sync));
+  const all = (on) => () => { checks.forEach((c) => (c.checked = on)); sync(); };
+  sync();
+  const el = h('div', { class: 'missing-picker' },
+    h('div', { class: 'row-actions left' },
+      h('button', { type: 'button', class: 'link-btn', onclick: all(true) }, 'Tick all'),
+      h('button', { type: 'button', class: 'link-btn', onclick: all(false) }, 'Untick all'),
+      count),
+    h('div', { class: 'table-wrap scroll' }, h('table', { class: 'table compact' },
+      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Name'), h('th', {}, 'Client ID'), h('th', {}, 'Phone'))),
+      h('tbody', {}, list.map((m, i) => h('tr', {},
+        h('td', {}, checks[i]),
+        h('td', { class: 'strong nowrap' }, h('a', { href: `#/contacts/${m.id}` }, m.name)),
+        h('td', {}, m.patientId), h('td', { class: 'nowrap' }, m.phone ? formatPhone(m.phone) : '')))))));
+  return { el, ids: () => checks.filter((c) => c.checked).map((c) => Number(c.value)) };
+}
+
 function importReport(file, r, onConfirm) {
   const used = r.columns.filter((c) => c.field);
   const ignored = r.columns.filter((c) => !c.field);
   const base = file.name.replace(/\.[^.]+$/, '');
+  let picker = null;
+  let inactivate = null;
+  const inactivateIds = () => (inactivate?.checked ? picker.ids() : []);
 
   return h('div', { class: 'import-report' },
     h('div', { class: 'import-file' }, h('strong', {}, file.name), ` · ${r.rows.toLocaleString()} rows read`),
@@ -427,18 +452,36 @@ function importReport(file, r, onConfirm) {
       stat('Updated', r.updated, r.updated ? 'accent' : ''),
       stat('Unchanged', r.unchanged),
       stat('Skipped', r.skipped),
-      stat('Problems', r.issueCount, r.issueCount ? 'warn' : '')),
+      stat('Problems', r.issueCount, r.issueCount ? 'warn' : ''),
+      r.fullList && stat('Not in file', r.missingCount, r.missingCount ? 'warn' : '')),
+    r.reactivated > 0 && h('p', { class: 'hint' }, `${r.reactivated.toLocaleString()} inactive contact${r.reactivated === 1 ? ' is' : 's are'} in this file and will become active again.`),
+
+    r.fullList && r.missingCount > 0 && (() => {
+      picker = missingPicker(r.missing);
+      inactivate = h('input', { type: 'checkbox', class: 'switch', checked: true });
+      return h('div', { class: 'subsection' },
+        h('div', { class: 'subsection-head' },
+          h('h3', {}, `In TextBoss but not in this file (${r.missingCount.toLocaleString()})`),
+          h('button', { class: 'btn', onclick: () => csvDownload(`${base}-not-in-file.csv`, [
+            ['Name', 'Client ID', 'Phone'], ...r.missing.map((m) => [m.name, m.patientId, m.phone]),
+          ]) }, icon('download'), 'Download as CSV')),
+        h('p', { class: 'hint' }, 'Clients with a client ID who aren\'t in this export, for example discharged clients. Inactive contacts are hidden from Contacts and searches but keep their conversations, and become active again if they text or show up in a later import.'),
+        r.missingCount > r.activeWithId * 0.5 && h('p', { class: 'callout warn' }, icon('warning'), h('span', {}, `That's more than half of your active clients. Make sure this file is the full list of current clients, not a partial export.`)),
+        h('label', { class: 'switch-label' }, inactivate, h('span', {}, h('strong', {}, 'Mark the ticked contacts inactive'))),
+        picker.el,
+        r.missing.length < r.missingCount && h('p', { class: 'hint' }, `Showing the first ${r.missing.length.toLocaleString()}.`));
+    })(),
 
     r.issueCount > 0 && h('div', { class: 'subsection' },
       h('div', { class: 'subsection-head' },
         h('h3', {}, `Problems to fix (${r.issueCount.toLocaleString()})`),
         h('button', { class: 'btn', onclick: () => csvDownload(`${base}-problems.csv`, [
-          ['Row', 'Name', 'Patient ID', 'Field', 'Value', 'Problem'],
+          ['Row', 'Name', 'Client ID', 'Field', 'Value', 'Problem'],
           ...r.issues.map((x) => [x.row, x.name, x.patientId, x.field, x.value, x.problem]),
         ]) }, icon('download'), 'Download as CSV')),
       h('p', { class: 'hint' }, 'These contacts are still imported, just without the bad value (an existing good value is kept). Fix them in WebPT and the next import will fill them in. Row numbers match the spreadsheet.'),
       h('div', { class: 'table-wrap scroll' }, h('table', { class: 'table compact' },
-        h('thead', {}, h('tr', {}, ['Row', 'Name', 'Patient ID', 'Field', 'Value', 'Problem'].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['Row', 'Name', 'Client ID', 'Field', 'Value', 'Problem'].map((t) => h('th', {}, t)))),
         h('tbody', {}, r.issues.map((x) => h('tr', {},
           h('td', { class: 'num' }, x.row), h('td', { class: 'strong nowrap' }, x.name), h('td', {}, x.patientId),
           h('td', {}, x.field), h('td', {}, h('code', {}, x.value || '(empty)')), h('td', { class: 'muted' }, x.problem)))))),
@@ -448,7 +491,7 @@ function importReport(file, r, onConfirm) {
       h('div', { class: 'subsection-head' },
         h('h3', {}, `What will change (${r.changeCount.toLocaleString()} contacts)`),
         h('button', { class: 'btn', onclick: () => csvDownload(`${base}-changes.csv`, [
-          ['Row', 'Name', 'Patient ID', 'Field', 'Old', 'New'],
+          ['Row', 'Name', 'Client ID', 'Field', 'Old', 'New'],
           ...r.changes.flatMap((c) => c.diff.map((d) => [c.row, c.name, c.patientId, FIELD_NAMES[d.field] ?? d.field, d.from, d.to])),
         ]) }, icon('download'), 'Download as CSV')),
       h('div', { class: 'table-wrap scroll' }, h('table', { class: 'table compact' },
@@ -464,8 +507,8 @@ function importReport(file, r, onConfirm) {
       ignored.length > 0 && h('p', { class: 'hint' }, 'Ignored: ', ignored.map((c) => c.header).join(', '))),
 
     h('div', { class: 'card-actions' },
-      h('button', { class: 'btn primary', disabled: !r.created && !r.updated, onclick: onConfirm },
-        r.created || r.updated ? `Import: ${r.created} new, ${r.updated} updated` : 'Nothing new to import'),
+      h('button', { class: 'btn primary', disabled: !r.created && !r.updated && !r.reactivated && !r.missingCount, onclick: (e) => onConfirm(e, inactivateIds()) },
+        r.created || r.updated || r.reactivated || r.missingCount ? `Import: ${r.created} new, ${r.updated} updated` : 'Nothing new to import'),
       h('button', { class: 'btn', onclick: () => renderAdmin() }, 'Cancel')));
 }
 
@@ -485,11 +528,14 @@ async function renderContactsAdmin() {
     try {
       const r = await send(true);
       drop.hidden = true;
-      fill(report, importReport(f, r, async (e) => {
+      fill(report, importReport(f, r, async (e, inactivateIds) => {
         e.target.disabled = true;
         try {
           const done = await send(false);
-          toast(`Imported: ${done.created} new, ${done.updated} updated`);
+          const off = inactivateIds.length
+            ? (await api('/contacts/status', { method: 'POST', body: { ids: inactivateIds, inactive: true, reason: 'import' } })).changed
+            : 0;
+          toast(`Imported: ${done.created} new, ${done.updated} updated${off ? `, ${off} marked inactive` : ''}`);
           renderAdmin();
         } catch (err) {
           toast(err.message);
@@ -506,7 +552,7 @@ async function renderContactsAdmin() {
   drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); handle(e.dataTransfer.files[0]); });
 
   const upload = card('Import contacts from a file',
-    'You will see what would change before anything is saved. Patients are matched by patient ID, so importing the full list again updates changed details (like a new phone number) instead of making duplicates. Imports never delete contacts or clear notes.',
+    'You will see what would change before anything is saved. Clients are matched by client ID, so importing the full list again updates changed details (like a new phone number) instead of making duplicates. Imports never delete contacts or clear notes.',
     drop, fileInput, report);
 
   const folder = card('Watched folder',
@@ -517,12 +563,14 @@ async function renderContactsAdmin() {
   const history = card('Import history', 'The last 30 imports from any source.',
     imports.entries.length
       ? h('div', { class: 'table-wrap' }, h('table', { class: 'table compact' },
-          h('thead', {}, h('tr', {}, ['When', 'Source', 'File', 'New', 'Updated', 'Skipped', 'Problems'].map((t) => h('th', {}, t)))),
+          h('thead', {}, h('tr', {}, ['When', 'Source', 'File', 'New', 'Updated', 'Skipped', 'Problems', 'Not in file'].map((t) => h('th', {}, t)))),
           h('tbody', {}, imports.entries.map((e) => h('tr', {},
             h('td', { class: 'nowrap' }, relTime(e.created_at)), h('td', {}, e.source), h('td', { class: 'clip' }, e.filename ?? ''),
             ...(e.error
-              ? [h('td', { colspan: 4, class: 'bad' }, e.error)]
-              : [h('td', { class: 'num' }, e.created), h('td', { class: 'num' }, e.updated), h('td', { class: 'num' }, e.skipped), h('td', { class: `num${e.issues ? ' warn-text' : ''}` }, e.issues ?? 0)]))))))
+              ? [h('td', { colspan: 5, class: 'bad' }, e.error)]
+              : [h('td', { class: 'num' }, e.created), h('td', { class: 'num' }, e.updated), h('td', { class: 'num' }, e.skipped), h('td', { class: `num${e.issues ? ' warn-text' : ''}` }, e.issues ?? 0),
+                  h('td', { class: 'num nowrap' }, e.missing == null ? '' : e.missing,
+                    e.reviewable ? h('button', { class: 'link-btn', style: 'margin-left:8px', onclick: () => reviewMissing(e) }, 'Review') : null)]))))))
       : h('p', { class: 'hint' }, 'No imports yet.'));
 
   const origin = location.origin;
@@ -563,11 +611,125 @@ curl -X POST ${origin}/api/v1/contacts \\
 curl -X POST ${origin}/api/v1/contacts \\
   -H "Authorization: Bearer YOUR_KEY" \\
   -H "Content-Type: application/vnd.ms-excel" \\
-  --data-binary @PatientReport.xls
+  --data-binary @ClientReport.xls
 
 # Add ?dryRun=1 to see what would change without saving.`)));
 
-  return [upload, folder, history, apiCard];
+  return [upload, folder, await inactiveCard(), history, apiCard];
+}
+
+async function reviewMissing(entry) {
+  const list = await api(`/admin/imports/${entry.id}/missing`);
+  if (!list.length) return toast('Everyone from that list is already inactive or back in a newer import');
+  const picker = missingPicker(list);
+  dialog(`Not in ${entry.filename ?? 'that import'}`, [
+    h('p', { class: 'dialog-text' }, `${list.length.toLocaleString()} active client${list.length === 1 ? ' was' : 's were'} not in this import (${relTime(entry.created_at)}). Mark the ticked ones inactive? They become active again if they text or appear in a later import.`),
+    picker.el,
+  ], 'Mark inactive', async () => {
+    const { changed } = await api('/contacts/status', { method: 'POST', body: { ids: picker.ids(), inactive: true, reason: 'import' } });
+    toast(`${changed} marked inactive`);
+    renderAdmin();
+  }, { wide: true });
+}
+
+// ---------- Inactive contacts ----------
+
+const IDLE_CHOICES = [[0, 'Off'], [180, '6 months'], [365, '1 year'], [730, '2 years'], [1095, '3 years']];
+const REASONS = { import: 'Not in import', idle: 'No activity', manual: 'Marked by staff' };
+
+async function inactiveCard() {
+  const s = await api('/admin/contacts/inactive-settings');
+  const custom = !IDLE_CHOICES.some(([d]) => d === s.idleDays);
+  const idle = h('select', {}, IDLE_CHOICES.map(([d, label]) => h('option', { value: String(d), selected: d === s.idleDays }, label)),
+    h('option', { value: 'custom', selected: custom }, 'Custom…'));
+  const days = h('input', { type: 'number', min: 30, max: 3650, value: custom ? s.idleDays : 365, style: 'width:110px', hidden: !custom });
+  const daysLabel = h('span', { class: 'hint', hidden: !custom }, 'days');
+  const auto = h('input', { type: 'checkbox', class: 'switch', checked: s.autoInactivateMissing });
+  const preview = h('p', { class: 'hint' });
+  const chosen = () => (idle.value === 'custom' ? Number(days.value) || 0 : Number(idle.value));
+  const showPreview = async () => {
+    days.hidden = daysLabel.hidden = idle.value !== 'custom';
+    const d = chosen();
+    if (!d || d === s.idleDays) return fill(preview);
+    const r = await api(`/admin/contacts/inactive-settings?previewDays=${d}`);
+    fill(preview, r.wouldInactivate ? h('span', { class: 'warn-text' }, `Saving will mark ${r.wouldInactivate.toLocaleString()} contact${r.wouldInactivate === 1 ? '' : 's'} inactive now.`) : 'No contacts would be marked inactive right now.');
+  };
+  idle.addEventListener('change', showPreview);
+  days.addEventListener('input', showPreview);
+
+  // Browse
+  const search = h('input', { type: 'search', placeholder: 'Search inactive contacts' });
+  const reason = h('select', {}, h('option', { value: '' }, 'Any reason'), Object.entries(REASONS).map(([v, l]) => h('option', { value: v }, l)));
+  const table = h('div', {});
+  let offset = 0;
+  let rows = [];
+  const selected = new Set();
+  const bar = h('div', { class: 'card-actions' });
+  const drawBar = () => fill(bar, selected.size > 0 && [
+    h('button', { class: 'btn primary', onclick: async () => {
+      const { changed } = await api('/contacts/status', { method: 'POST', body: { ids: [...selected], inactive: false } });
+      toast(`${changed} made active again`);
+      selected.clear();
+      load(true);
+    } }, `Make ${selected.size} active again`),
+    h('button', { class: 'link-btn', onclick: () => { selected.clear(); draw(); } }, 'Clear')]);
+  let total = 0;
+  const draw = () => {
+    fill(table, rows.length
+      ? [h('div', { class: 'table-wrap scroll' }, h('table', { class: 'table compact' },
+          h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Name'), h('th', {}, 'Client ID'), h('th', {}, 'Phone'), h('th', {}, 'Why'), h('th', {}, 'Since'))),
+          h('tbody', {}, rows.map((c) => {
+            const box = h('input', { type: 'checkbox', checked: selected.has(c.id), onchange: () => { box.checked ? selected.add(c.id) : selected.delete(c.id); drawBar(); } });
+            return h('tr', {},
+              h('td', {}, box),
+              h('td', { class: 'strong nowrap' }, h('a', { href: `#/contacts/${c.id}` }, [c.nickname && `(${c.nickname})`, c.firstName, c.lastName].filter(Boolean).join(' ') || '(no name)')),
+              h('td', {}, c.patientId), h('td', { class: 'nowrap' }, c.phone ? formatPhone(c.phone) : ''),
+              h('td', {}, REASONS[c.inactiveReason] ?? ''), h('td', { class: 'nowrap' }, relTime(c.inactiveAt)));
+          })))),
+        rows.length < total && h('button', { class: 'btn', onclick: () => load(false) }, `Show more (${(total - rows.length).toLocaleString()} left)`)]
+      : h('p', { class: 'empty-note' }, search.value || reason.value ? 'No inactive contacts match.' : 'No inactive contacts.'));
+    drawBar();
+  };
+  const load = async (reset) => {
+    if (reset) {
+      offset = 0;
+      rows = [];
+    }
+    const q = new URLSearchParams({ status: 'inactive', limit: 100, offset, q: search.value });
+    if (reason.value) q.set('reason', reason.value);
+    const r = await api(`/contacts?${q}`);
+    total = r.total;
+    rows.push(...r.contacts);
+    offset = rows.length;
+    draw();
+  };
+  let t;
+  search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => load(true), 250); });
+  reason.addEventListener('change', () => load(true));
+  load(true);
+
+  return card('Inactive contacts',
+    `Inactive contacts are hidden from Contacts, searches and bulk messages, but keep their conversations. Any text to or from them, or showing up in an import, makes them active again. ${s.counts.active.toLocaleString()} active, ${s.counts.inactive.toLocaleString()} inactive.`,
+    h('div', { class: 'form-grid' },
+      field('Mark inactive after no activity for', h('div', { class: 'row-actions left' }, idle, days, daysLabel),
+        'Activity means a text either way, an edit, or being in an import. Checked every few hours.'),
+      h('div')),
+    preview,
+    h('label', { class: 'switch-label' }, auto,
+      h('span', {}, h('strong', {}, 'Watched folder: mark clients missing from the export inactive'),
+        h('span', { class: 'hint' }, ' — for when the folder receives the full list of current clients. Skipped if more than half would go at once. When off, use Review in the import history.'))),
+    h('div', { class: 'card-actions' }, h('button', { class: 'btn primary', onclick: async () => {
+      try {
+        const r = await api('/admin/contacts/inactive-settings', { method: 'PUT', body: { idleDays: chosen(), autoInactivateMissing: auto.checked } });
+        toast(r.changed ? `Saved. ${r.changed} contact${r.changed === 1 ? '' : 's'} marked inactive.` : 'Saved');
+        renderAdmin();
+      } catch (err) {
+        toast(err.message);
+      }
+    } }, 'Save')),
+    h('div', { class: 'subsection' },
+      h('div', { class: 'row-actions left' }, search, reason),
+      table, bar));
 }
 
 // ---------- Blocked ----------
@@ -616,7 +778,7 @@ async function renderBackup() {
   const download = card('Download a backup',
     'One file with everything: messages, contacts, lists, canned responses, users, settings (including saved BulkVS credentials) and attachments.',
     h('div', { class: 'callout warn' }, icon('warning'),
-      h('div', {}, h('strong', {}, 'This file contains patient information and passwords. '),
+      h('div', {}, h('strong', {}, 'This file contains client information and passwords. '),
         'Store it somewhere private and delete copies you no longer need.')),
     h('div', { class: 'card-actions' },
       h('a', { class: 'btn primary', href: '/api/admin/backup', download: '' }, icon('download'), 'Download backup')),

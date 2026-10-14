@@ -16,6 +16,8 @@ import {
   setOptOut,
   contactNames,
   contactMergeNames,
+  setInactive,
+  reactivate,
 } from '../contacts.js';
 import { createBroadcast, serializeBroadcast } from '../messaging.js';
 
@@ -55,6 +57,13 @@ router.get('/contacts', (req, res) => {
     where.push('c.id IN (SELECT contact_id FROM list_members WHERE list_id = ?)');
     params.push(Number(req.query.list));
   }
+  // Inactive contacts only show when asked for (Admin settings → Contacts & Import)
+  if (req.query.status === 'inactive') where.push('c.inactive_at IS NOT NULL');
+  else if (req.query.status !== 'all') where.push('c.inactive_at IS NULL');
+  if (req.query.reason) {
+    where.push('c.inactive_reason = ?');
+    params.push(String(req.query.reason));
+  }
   if (req.query.filter === 'optedOut') where.push(`c.phone IN (SELECT phone FROM opt_outs)`);
   if (req.query.filter === 'noPhone') where.push(`c.phone = ''`);
 
@@ -62,8 +71,9 @@ router.get('/contacts', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const offset = Number(req.query.offset) || 0;
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM contacts c ${whereSql}`).get(...params);
+  const order = req.query.status === 'inactive' ? 'c.inactive_at DESC, ' : '';
   const rows = db
-    .prepare(`${CONTACT_SELECT} ${whereSql} ORDER BY c.last_name COLLATE NOCASE, c.first_name COLLATE NOCASE, c.id LIMIT ? OFFSET ?`)
+    .prepare(`${CONTACT_SELECT} ${whereSql} ORDER BY ${order}c.last_name COLLATE NOCASE, c.first_name COLLATE NOCASE, c.id LIMIT ? OFFSET ?`)
     .all(...params, limit, offset);
   const result = { total, contacts: rows.map(serializeContact) };
   // "Select all N matching" needs every id, not just the visible page
@@ -71,6 +81,15 @@ router.get('/contacts', (req, res) => {
     result.ids = db.prepare(`SELECT c.id FROM contacts c ${whereSql}`).all(...params).map((r) => r.id);
   }
   res.json(result);
+});
+
+// Mark contacts inactive (hidden from the list) or active again
+router.post('/contacts/status', (req, res) => {
+  const ids = (req.body?.ids ?? []).map(Number).filter(Boolean).slice(0, 20000);
+  if (!ids.length) fail(400, 'Choose at least one contact');
+  const reason = ['import', 'manual'].includes(req.body?.reason) ? req.body.reason : 'manual';
+  const changed = req.body?.inactive ? setInactive(ids, reason) : reactivate(ids);
+  res.json({ ok: true, changed });
 });
 
 // Contacts by id, for the bulk message recipient summary
@@ -164,7 +183,7 @@ router.get('/lists', (_req, res) => {
   res.json(
     db.prepare(
       `SELECT l.id, l.name, l.created_at AS createdAt, u.display_name AS createdBy,
-         (SELECT COUNT(*) FROM list_members m WHERE m.list_id = l.id) AS count
+         (SELECT COUNT(*) FROM list_members m JOIN contacts c ON c.id = m.contact_id WHERE m.list_id = l.id AND c.inactive_at IS NULL) AS count
        FROM lists l LEFT JOIN users u ON u.id = l.created_by ORDER BY l.created_at DESC`,
     ).all(),
   );

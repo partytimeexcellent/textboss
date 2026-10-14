@@ -14,7 +14,7 @@ export function renderContactsSidebar() {
   let searchTimer;
   const search = h('input', {
     type: 'search',
-    placeholder: 'Search name, phone, DOB, patient ID',
+    placeholder: 'Search name, phone, DOB, client ID',
     value: state.contactSearch,
     oninput: (e) => {
       clearTimeout(searchTimer);
@@ -320,6 +320,11 @@ async function renderContact(id, query) {
   const field = (label, name, attrs = {}) =>
     h('label', {}, label, h('input', { type: 'text', name, value: c[name] ?? '', ...attrs }));
   const optOut = h('input', { type: 'checkbox', name: 'optedOut', checked: c.optedOut });
+  const setStatus = async (inactive) => {
+    await api('/contacts/status', { method: 'POST', body: { ids: [id], inactive } });
+    toast(inactive ? 'Marked inactive' : 'Active again');
+    renderContact(id);
+  };
   const error = h('div', { class: 'form-error' });
 
   const form = h('form', {
@@ -351,7 +356,7 @@ async function renderContact(id, query) {
       field('Mobile phone', 'phone', { type: 'tel', value: c.phone ? formatPhone(c.phone) : '' }),
       field('Date of birth', 'dob', { type: 'date' }),
       field('Email', 'email', { type: 'email' }),
-      field('Patient ID', 'patientId'),
+      field('Client ID', 'patientId'),
     ),
     h('label', {}, 'Notes', h('textarea', { name: 'notes', rows: 4 }, c.notes ?? '')),
     h('label', { class: `optout-check${c.optedOut ? ' on' : ''}` },
@@ -360,6 +365,11 @@ async function renderContact(id, query) {
         h('strong', {}, 'Opted out of texts'),
         h('div', { class: 'hint' }, 'Sending to an opted-out number requires a confirmation. This is set automatically when someone replies STOP, and cleared when they reply START.',
           c.sharedPhone ? ` It applies to the phone number, which ${c.sharedPhone} other contact${c.sharedPhone > 1 ? 's share' : ' shares'}.` : ''))),
+    c.inactiveAt && h('div', { class: 'callout warn' }, icon('warning'),
+      h('div', {},
+        h('strong', {}, 'Inactive. '),
+        `${{ import: 'Not in a client import', idle: 'No activity for a while', manual: 'Marked inactive' }[c.inactiveReason] ?? 'Marked inactive'} (${relTime(c.inactiveAt)}). Hidden from Contacts and bulk messages. Texting them makes them active again. `,
+        h('button', { type: 'button', class: 'link-btn', onclick: () => setStatus(false) }, 'Make active'))),
     c.blocked && h('p', { class: 'hint bad' }, 'Texts from this number are blocked. ',
       h('button', { type: 'button', class: 'link-btn', onclick: async () => {
         await api(`/phones/${c.phone}/block`, { method: 'PUT', body: { blocked: false } });
@@ -372,6 +382,7 @@ async function renderContact(id, query) {
     h('div', { class: 'form-actions' },
       h('button', { class: 'btn primary', type: 'submit' }, id ? 'Save' : 'Create contact'),
       id && c.phone && h('button', { class: 'btn', type: 'button', onclick: () => messageContact(c) }, 'Message'),
+      id && !c.inactiveAt && h('button', { class: 'btn', type: 'button', title: 'Hide from Contacts and searches, e.g. a discharged client', onclick: () => setStatus(true) }, 'Mark inactive'),
       id && state.me.isAdmin && h('button', {
         class: 'btn danger',
         type: 'button',

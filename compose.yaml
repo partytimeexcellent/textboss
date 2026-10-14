@@ -20,7 +20,7 @@ services:
       PORT: "3000" # inside the container; the host port comes from PORT in .env
     volumes:
       - textboss-data:/app/data
-      # Watched folder: patient exports saved here are imported automatically.
+      # Watched folder: client exports saved here are imported automatically.
       # Create it first so the app can write to it: mkdir -p import && sudo chown 1000:1000 import
       - ./import:/app/import
     ports:

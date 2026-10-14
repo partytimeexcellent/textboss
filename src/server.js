@@ -32,7 +32,9 @@ import { recordInbound, sendOutbound, applyReceipt, listMessages, resumeBroadcas
 import { fail } from './http.js';
 import { securityHeaders, assertNotLocked, recordFailure, recordSuccess, mfaKey } from './security.js';
 import * as mfa from './mfa.js';
-import { parseContactFile, upsertContacts, logImport } from './contacts.js';
+import {
+  parseContactFile, upsertContacts, logImport, idleDays, idleCandidates, inactivateIdle, autoInactivateMissing, startIdleJob,
+} from './contacts.js';
 import { router as contactsRouter } from './routes/contacts.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
@@ -1035,8 +1037,44 @@ admin.post('/import', express.raw({ type: () => true, limit: '20mb' }), (req, re
 admin.get('/imports', (_req, res) => {
   res.json({
     folder: config.importDir,
-    entries: db.prepare('SELECT * FROM import_log ORDER BY id DESC LIMIT 30').all(),
+    entries: db.prepare('SELECT id, source, filename, created, updated, skipped, issues, error, missing, missing_ids IS NOT NULL AS reviewable, created_at FROM import_log ORDER BY id DESC LIMIT 30').all(),
   });
+});
+
+// Clients who weren't in an earlier import and are still active
+admin.get('/imports/:id/missing', (req, res) => {
+  const row = db.prepare('SELECT missing_ids FROM import_log WHERE id = ?').get(Number(req.params.id));
+  const ids = JSON.parse(row?.missing_ids ?? '[]');
+  const found = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    found.push(...db.prepare(`SELECT id, first_name, last_name, nickname, patient_id, phone FROM contacts
+      WHERE inactive_at IS NULL AND id IN (${chunk.map(() => '?').join(',')})`).all(...chunk));
+  }
+  found.sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name));
+  res.json(found.map((r) => ({ id: r.id, name: [r.nickname && `(${r.nickname})`, r.first_name, r.last_name].filter(Boolean).join(' '), patientId: r.patient_id, phone: r.phone })));
+});
+
+// Inactive contacts: idle timer and automatic folder-import clean-up
+const inactiveSettings = () => ({
+  idleDays: idleDays(),
+  autoInactivateMissing: autoInactivateMissing(),
+  counts: {
+    active: db.prepare('SELECT COUNT(*) AS n FROM contacts WHERE inactive_at IS NULL').get().n,
+    inactive: db.prepare('SELECT COUNT(*) AS n FROM contacts WHERE inactive_at IS NOT NULL').get().n,
+  },
+});
+admin.get('/contacts/inactive-settings', (req, res) => {
+  const preview = Number(req.query.previewDays);
+  res.json({ ...inactiveSettings(), wouldInactivate: preview > 0 ? idleCandidates(preview) : null });
+});
+admin.put('/contacts/inactive-settings', (req, res) => {
+  const days = Math.round(Number(req.body?.idleDays) || 0);
+  if (days && (days < 30 || days > 3650)) fail(400, 'Choose between 30 and 3,650 days, or Off');
+  setSetting('contacts.idleDays', days ? String(days) : null);
+  setSetting('contacts.autoInactivateMissing', req.body?.autoInactivateMissing ? '1' : null);
+  const changed = inactivateIdle();
+  res.json({ ...inactiveSettings(), changed });
 });
 
 admin.get('/api-keys', (_req, res) => {
@@ -1089,6 +1127,7 @@ app.use((err, _req, res, _next) => {
 
 resumeBroadcasts();
 startWatcher();
+startIdleJob();
 
 app.listen(config.port, () => {
   console.log(`TextBoss listening on http://localhost:${config.port}`);
