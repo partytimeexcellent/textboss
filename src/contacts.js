@@ -385,7 +385,8 @@ export function logImport(source, filename, result, error = null) {
 // phone -> display name, for conversation lists
 export function contactNames() {
   const rows = db
-    .prepare(`SELECT phone, first_name, last_name, nickname FROM contacts WHERE phone != '' ORDER BY last_name, first_name`)
+    // Oldest first, so adding a family member doesn't rename an existing conversation
+    .prepare(`SELECT phone, first_name, last_name, nickname FROM contacts WHERE phone != '' ORDER BY id`)
     .all();
   const map = {};
   for (const r of rows) (map[r.phone] ??= []).push(fullName(r) || r.phone);

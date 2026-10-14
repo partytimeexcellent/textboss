@@ -18,6 +18,7 @@ import {
   contactMergeNames,
   setInactive,
   reactivate,
+  fullName,
 } from '../contacts.js';
 import { createBroadcast, serializeBroadcast } from '../messaging.js';
 
@@ -110,9 +111,13 @@ router.get('/contacts/:id', (req, res) => {
   contact.lists = db
     .prepare('SELECT l.id, l.name FROM lists l JOIN list_members m ON m.list_id = l.id WHERE m.contact_id = ? ORDER BY l.name')
     .all(contact.id);
-  contact.sharedPhone = contact.phone
-    ? db.prepare('SELECT COUNT(*) AS n FROM contacts WHERE phone = ? AND id != ?').get(contact.phone, contact.id).n
-    : 0;
+  // Other contacts with the same phone number (family members, or a duplicate)
+  contact.sharedWith = contact.phone
+    ? db.prepare(`SELECT id, first_name, last_name, nickname, inactive_at FROM contacts WHERE phone = ? AND id != ?
+        ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE`).all(contact.phone, contact.id)
+        .map((r) => ({ id: r.id, name: fullName(r) || '(no name)', inactive: !!r.inactive_at }))
+    : [];
+  contact.sharedPhone = contact.sharedWith.length;
   res.json(contact);
 });
 

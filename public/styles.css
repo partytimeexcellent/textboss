@@ -765,3 +765,6 @@ a.btn.primary { color: var(--accent-text); }
 .table.closures input { width: 100%; min-width: 110px; }
 .sticky-save { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; border-top: 1px solid var(--border); }
 @media (max-width: 760px) { .hours-day { grid-template-columns: 1fr; } }
+.shared-phone { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-side); font-size: 14px; }
+.shared-phone > span:first-child { flex: none; margin-top: 2px; color: var(--text-muted); }
+.shared-phone svg { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--text-muted); }

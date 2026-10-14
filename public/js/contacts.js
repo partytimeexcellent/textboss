@@ -370,6 +370,10 @@ async function renderContact(id, query) {
         h('strong', {}, 'Inactive. '),
         `${{ import: 'Not in a client import', idle: 'No activity for a while', manual: 'Marked inactive' }[c.inactiveReason] ?? 'Marked inactive'} (${relTime(c.inactiveAt)}). Hidden from Contacts and bulk messages. Texting them makes them active again. `,
         h('button', { type: 'button', class: 'link-btn', onclick: () => setStatus(false) }, 'Make active'))),
+    c.sharedWith?.length > 0 && h('div', { class: 'shared-phone' }, icon('user'),
+      h('span', {}, 'Also at this number: ',
+        c.sharedWith.map((o, i) => [i > 0 && ', ', h('a', { href: `#/contacts/${o.id}` }, o.name), o.inactive && h('span', { class: 'hint' }, ' (inactive)')]),
+        h('span', { class: 'hint' }, '. Conversations with this number show the first contact\'s name and "+', String(c.sharedWith.length), '". If one is a duplicate, delete it or merge the details.'))),
     c.blocked && h('p', { class: 'hint bad' }, 'Texts from this number are blocked. ',
       h('button', { type: 'button', class: 'link-btn', onclick: async () => {
         await api(`/phones/${c.phone}/block`, { method: 'PUT', body: { blocked: false } });

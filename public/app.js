@@ -689,7 +689,7 @@ function renderList() {
         h('a', { class: 'conv-link', href: `#/c/${c.id}` },
           conversationAvatar(c.participants),
           h('div', { class: 'main' },
-            h('div', { class: 'name' }, conversationName(c.participants), optedOut && h('span', { class: 'tag warn' }, 'Opted out')),
+            h('div', { class: 'name', title: sharedNamesTitle(c.participants) }, conversationName(c.participants), optedOut && h('span', { class: 'tag warn' }, 'Opted out')),
             h('div', { class: 'preview' }, preview),
             multi && h('div', { class: 'via' }, `via ${numberLabel(c.numberId)}`),
           )),
@@ -1016,8 +1016,10 @@ function renderPaneChrome(p) {
   const blocked = single && state.blocked.has(single);
   const multi = els.panes?.classList.contains('multi');
   // Phone (when a contact name is shown) and, with several numbers, which one this is on
+  const shared = single && (state.names[single]?.length ?? 0) > 1;
   const subline = [
     single && state.names[single] && formatPhone(single),
+    shared && `Shared number: ${state.names[single].join(', ')}`,
     state.numbers.length > 1 && `via ${numberLabel(t.numberId)}`,
   ].filter(Boolean).join(' · ');
 
@@ -1037,8 +1039,8 @@ function renderPaneChrome(p) {
     quickToggle(t, 'flagged', 'head'),
     single && h('button', {
       class: 'icon-btn',
-      title: state.names[single] ? 'View contact' : 'Add contact',
-      onclick: () => openContactFor(single),
+      title: shared ? 'Contacts at this number' : state.names[single] ? 'View contact' : 'Add contact',
+      onclick: (e) => openContactFor(single, e.currentTarget),
     }, icon('user')),
     h('button', { class: 'icon-btn', title: 'More', onclick: (e) => paneMenu(p, e.currentTarget) }, icon('menu')),
     multi && h('button', { class: 'icon-btn pane-close', title: 'Close this pane', onclick: () => closePane(p.id) }, icon('close')),
@@ -1053,10 +1055,24 @@ function renderThreadChrome() {
   for (const p of panes.values()) renderPaneChrome(p);
 }
 
-async function openContactFor(phone) {
-  const { contacts } = await api(`/contacts?q=${phone}&limit=1`);
-  const match = contacts.find((c) => c.phone === phone);
-  location.hash = match ? `#/contacts/${match.id}` : `#/contacts/new?phone=${phone}`;
+// Several contacts can share a phone (a family); then offer each one
+async function openContactFor(phone, anchor) {
+  const { contacts } = await api(`/contacts?q=${phone}&limit=20&status=all`);
+  const matches = contacts.filter((c) => c.phone === phone);
+  if (matches.length > 1 && anchor) {
+    openMenu(anchor, [
+      ...matches.map((c) => [`${fullName(c)}${c.inactiveAt ? ' (inactive)' : ''}`, () => (location.hash = `#/contacts/${c.id}`)]),
+      ['Add another contact', () => (location.hash = `#/contacts/new?phone=${phone}`)],
+    ]);
+    return;
+  }
+  location.hash = matches[0] ? `#/contacts/${matches[0].id}` : `#/contacts/new?phone=${phone}`;
+}
+
+// Hover text for a conversation row when a phone belongs to several contacts
+function sharedNamesTitle(participants) {
+  const lines = participants.filter((p) => (state.names[p]?.length ?? 0) > 1).map((p) => `${formatPhone(p)} is shared by: ${state.names[p].join(', ')}`);
+  return lines.length ? lines.join('\n') : null;
 }
 
 function paneMenu(p, anchor) {
