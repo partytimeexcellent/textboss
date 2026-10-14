@@ -741,3 +741,12 @@ a.btn.primary { color: var(--accent-text); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .missing-picker { display: grid; gap: 8px; }
 .missing-picker .table-wrap.scroll { max-height: 320px; }
+
+/* iOS 26+ home-screen apps blur a band under the status bar that reaches into
+   the page. Push the top bars below it (installed app on iPhone/iPad only;
+   -webkit-touch-callout is supported only by iOS Safari). */
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    .sidebar, .thread { padding-top: calc(env(safe-area-inset-top) + 14px); }
+  }
+}
