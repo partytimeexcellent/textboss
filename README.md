@@ -133,7 +133,7 @@ All three import paths use the same rules:
 - **Phone:** the cell phone is used, then a generic phone, then home, then work.
 - **Matching:** existing contacts are matched by client ID, or by phone plus name when there's no ID, and updated rather than duplicated.
 - **Never destructive:** imports never delete contacts or clear fields the file doesn't include, such as notes.
-- **Bad values:** an invalid phone, email or date of birth doesn't skip the client. That one value is left out (an existing good value is kept) and listed under "Problems to fix" with the spreadsheet row, name and client ID. You can download that list as a CSV.
+- **Bad values:** an invalid phone, email or date of birth doesn't skip the client. That one value is left out (an existing good value is kept) and listed under "Problems to fix" with the spreadsheet row, name and client ID. You can download that list as a CSV. The list is saved with every import (upload, watched folder or API): **Problems to fix** in Admin → Contacts & Import shows the latest one, and **View** in the import history opens any earlier one, each with a CSV download.
 
 Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `Last Name`, `Name (Last)`, `Name` / `Patient Name` / `Client Name` ("Last, First" or "First Last"), `Cell Phone`, `Mobile`, `Phone`, `Home Phone`, `Work Phone`, `Date of Birth` / `DOB`, `Email`, `WebPT Patient ID` / `Patient ID` / `Client ID` / `MRN`, `Notes`, `Opt Out`.
 

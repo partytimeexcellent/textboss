@@ -754,7 +754,8 @@ async function renderContactsAdmin() {
             h('td', { class: 'nowrap' }, relTime(e.created_at)), h('td', {}, e.source), h('td', { class: 'clip' }, e.filename ?? ''),
             ...(e.error
               ? [h('td', { colspan: 5, class: 'bad' }, e.error)]
-              : [h('td', { class: 'num' }, e.created), h('td', { class: 'num' }, e.updated), h('td', { class: 'num' }, e.skipped), h('td', { class: `num${e.issues ? ' warn-text' : ''}` }, e.issues ?? 0),
+              : [h('td', { class: 'num' }, e.created), h('td', { class: 'num' }, e.updated), h('td', { class: 'num' }, e.skipped), h('td', { class: `num nowrap${e.issues ? ' warn-text' : ''}` }, e.issues ?? 0,
+                    e.has_problems ? h('button', { class: 'link-btn', style: 'margin-left:8px', onclick: () => showProblems(e) }, 'View') : null),
                   h('td', { class: 'num nowrap' }, e.missing == null ? '' : e.missing,
                     e.reviewable ? h('button', { class: 'link-btn', style: 'margin-left:8px', onclick: () => reviewMissing(e) }, 'Review') : null)]))))))
       : h('p', { class: 'hint' }, 'No imports yet.'));
@@ -801,7 +802,49 @@ curl -X POST ${origin}/api/v1/contacts \\
 
 # Add ?dryRun=1 to see what would change without saving.`)));
 
-  return [upload, folder, await inactiveCard(), history, apiCard];
+  return [upload, latestProblemsCard(imports.entries), folder, await inactiveCard(), history, apiCard];
+}
+
+// ----- Problems saved with an import -----
+
+const PROBLEM_COLUMNS = ['Row', 'Name', 'Client ID', 'Field', 'Value', 'Problem'];
+const problemRow = (x) => [x.row, x.name, x.patientId, x.field, x.value, x.problem];
+const problemsCsv = (entry, issues) => csvDownload(`${(entry.filename || 'import').replace(/\.[^.]+$/, '')}-problems.csv`, [PROBLEM_COLUMNS, ...issues.map(problemRow)]);
+
+async function showProblems(entry) {
+  const r = await api(`/admin/imports/${entry.id}/problems`);
+  if (!r.issues.length) return toast('The details of these problems weren\'t saved (imports before this update only kept the count)');
+  dialog(`Problems in ${r.filename || `the ${r.source} import`}`, [
+    h('p', { class: 'dialog-text' },
+      `${r.issueCount.toLocaleString()} problem${r.issueCount === 1 ? '' : 's'} from the import ${relTime(r.createdAt)}. These contacts were still imported, just without the bad value. Fix them in your client software and the next import fills them in. Row numbers match that file.`),
+    h('div', { class: 'card-actions' }, h('button', { type: 'button', class: 'btn', onclick: () => problemsCsv(r, r.issues) }, icon('download'), 'Download as CSV')),
+    h('div', { class: 'table-wrap scroll' }, h('table', { class: 'table compact' },
+      h('thead', {}, h('tr', {}, PROBLEM_COLUMNS.map((t) => h('th', {}, t)))),
+      h('tbody', {}, r.issues.map((x) => h('tr', {},
+        h('td', { class: 'num' }, x.row), h('td', { class: 'strong nowrap' }, x.name), h('td', {}, x.patientId),
+        h('td', {}, x.field), h('td', {}, h('code', {}, x.value || '(empty)')), h('td', { class: 'muted' }, x.problem)))))),
+    r.issues.length < r.issueCount && h('p', { class: 'hint' }, `Showing the first ${r.issues.length.toLocaleString()}.`),
+  ], null, () => {}, { wide: 'xl' });
+}
+
+// The latest import's problems, so they're easy to find again
+function latestProblemsCard(entries) {
+  const latest = entries.find((e) => !e.error);
+  if (!latest) return null;
+  if (!latest.issues) {
+    return card('Problems to fix', null, h('p', { class: 'ok' }, `✓ The latest import (${latest.filename || latest.source}, ${relTime(latest.created_at)}) had no problems.`));
+  }
+  return card('Problems to fix',
+    'Contacts in the latest import with a bad phone number, email or date of birth, or no name. Fix them in your client software and they\'re corrected on the next import.',
+    h('p', {}, h('strong', {}, `${latest.issues.toLocaleString()} problem${latest.issues === 1 ? '' : 's'}`), ` in ${latest.filename || `the ${latest.source} import`} (${relTime(latest.created_at)}).`),
+    latest.has_problems
+      ? h('div', { class: 'card-actions' },
+          h('button', { class: 'btn primary', onclick: () => showProblems(latest) }, 'View problems'),
+          h('button', { class: 'btn', onclick: async () => {
+            const r = await api(`/admin/imports/${latest.id}/problems`);
+            problemsCsv(r, r.issues);
+          } }, icon('download'), 'Download as CSV'))
+      : h('p', { class: 'hint' }, 'The details weren\'t saved for this import (it ran before this update). They will be for the next one.'));
 }
 
 async function reviewMissing(entry) {

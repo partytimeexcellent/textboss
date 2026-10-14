@@ -310,7 +310,8 @@ export function dialog(title, fields, submitLabel, onSubmit, { danger = false, w
       submitLabel && h('button', { class: `btn ${danger ? 'danger-fill' : 'primary'}`, type: 'submit' }, submitLabel),
     ),
   );
-  const dlg = h('dialog', { class: wide ? 'wide' : '', onclose: () => dlg.remove() }, form);
+  // wide: true for forms, 'xl' for big tables
+  const dlg = h('dialog', { class: wide === 'xl' ? 'wide xl' : wide ? 'wide' : '', onclose: () => dlg.remove() }, form);
   document.body.append(dlg);
   dlg.showModal();
   return dlg;

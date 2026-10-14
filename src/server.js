@@ -1126,8 +1126,16 @@ admin.post('/import', express.raw({ type: () => true, limit: '20mb' }), (req, re
 admin.get('/imports', (_req, res) => {
   res.json({
     folder: config.importDir,
-    entries: db.prepare('SELECT id, source, filename, created, updated, skipped, issues, error, missing, missing_ids IS NOT NULL AS reviewable, created_at FROM import_log ORDER BY id DESC LIMIT 30').all(),
+    entries: db.prepare(`SELECT id, source, filename, created, updated, skipped, issues, error, missing, missing_ids IS NOT NULL AS reviewable,
+      problems IS NOT NULL AS has_problems, created_at FROM import_log ORDER BY id DESC LIMIT 30`).all(),
   });
+});
+
+// The "Problems to fix" list saved with an import
+admin.get('/imports/:id/problems', (req, res) => {
+  const row = db.prepare('SELECT id, source, filename, issues, problems, created_at FROM import_log WHERE id = ?').get(Number(req.params.id));
+  if (!row) fail(404, 'Import not found');
+  res.json({ id: row.id, source: row.source, filename: row.filename, createdAt: row.created_at, issueCount: row.issues, issues: JSON.parse(row.problems ?? '[]') });
 });
 
 // Clients who weren't in an earlier import and are still active

@@ -9,7 +9,7 @@ import { normalizePhone, isValidPhone } from './phone.js';
 for (const [col, def] of [['inactive_at', 'INTEGER'], ['inactive_reason', 'TEXT'], ['last_import_at', 'INTEGER'], ['active_since', 'INTEGER']]) {
   if (!db.prepare('PRAGMA table_info(contacts)').all().some((c) => c.name === col)) db.exec(`ALTER TABLE contacts ADD COLUMN ${col} ${def}`);
 }
-for (const [col, def] of [['missing', 'INTEGER'], ['missing_ids', 'TEXT']]) {
+for (const [col, def] of [['missing', 'INTEGER'], ['missing_ids', 'TEXT'], ['problems', 'TEXT']]) {
   if (!db.prepare('PRAGMA table_info(import_log)').all().some((c) => c.name === col)) db.exec(`ALTER TABLE import_log ADD COLUMN ${col} ${def}`);
 }
 
@@ -252,7 +252,7 @@ export function parseContactFile(buffer) {
 // A bad phone, email or DOB does not skip the contact: that one field is left
 // out (so an existing good value is kept) and reported in `issues`, with the
 // row, name and client ID so the source data can be fixed.
-const FIELD_LABEL = { phone: 'Phone', email: 'Email', dob: 'Date of birth' };
+const FIELD_LABEL = { phone: 'Phone', email: 'Email', dob: 'Date of birth', name: 'Name' };
 const MAX_ISSUES = 2000;
 const MAX_CHANGES = 1000;
 
@@ -376,9 +376,11 @@ export function logImport(source, filename, result, error = null) {
   // Who was missing is kept so it can be reviewed later (watched-folder imports)
   const missingIds = result?.fullList && result.missingCount && !result.autoInactivated ? JSON.stringify(result.missing.map((m) => m.id)) : null;
   db.prepare(
-    'INSERT INTO import_log (source, filename, created, updated, skipped, issues, error, missing, missing_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO import_log (source, filename, created, updated, skipped, issues, error, missing, missing_ids, problems, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   ).run(source, filename ?? null, result?.created ?? 0, result?.updated ?? 0, result?.skipped ?? 0, result?.issueCount ?? 0, error,
-    result?.fullList ? result.missingCount : null, missingIds, Date.now());
+    result?.fullList ? result.missingCount : null, missingIds,
+    // The "Problems to fix" list, kept so it can be viewed or downloaded later
+    result?.issueCount ? JSON.stringify(result.issues) : null, Date.now());
   db.prepare('DELETE FROM import_log WHERE id <= (SELECT MAX(id) - 200 FROM import_log)').run();
 }
 
