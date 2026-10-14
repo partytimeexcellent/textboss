@@ -38,7 +38,7 @@ import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
 import * as email from './email.js';
-import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, pushToUsers, unreadTotal } from './push.js';
+import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, setPaused, pushToUsers, unreadTotal } from './push.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -493,6 +493,12 @@ api.post('/push/unsubscribe', (req, res) => {
 
 api.post('/push/status', (req, res) => res.json(subscriptionStatus(String(req.body?.endpoint ?? ''))));
 
+// The bell button: pause or resume alerts on one device
+api.post('/push/pause', (req, res) => {
+  if (!setPaused(req.user.id, String(req.body?.endpoint ?? ''), !!req.body?.paused)) fail(400, 'Notifications are not turned on for this device yet');
+  res.json({ ok: true, paused: !!req.body?.paused });
+});
+
 api.post('/push/test', async (req, res) => {
   const endpoint = String(req.body?.endpoint ?? '');
   const sub = db.prepare('SELECT 1 FROM push_subscriptions WHERE user_id = ? AND endpoint = ?').get(req.user.id, endpoint);
@@ -702,6 +708,7 @@ api.post('/conversations/:id/unread', (req, res) => {
 });
 
 api.delete('/conversations/:id', (req, res) => {
+  if (!req.user.is_admin) fail(403, 'Only admins can delete conversations');
   const c = loadConversation(req);
   db.prepare('DELETE FROM conversations WHERE id = ?').run(c.id);
   publish(allUserIds(), 'read', { conversationId: c.id });

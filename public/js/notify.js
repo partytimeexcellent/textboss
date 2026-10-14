@@ -2,7 +2,7 @@
 // iPhone/iPad: works only from the home-screen app (iOS 16.4+), and turning it
 // on must start from a tap, which the Notifications dialog provides.
 
-import { h, fill, state, api, toast, dialog } from './core.js';
+import { h, fill, icon, state, api, toast, dialog } from './core.js';
 
 const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -111,6 +111,58 @@ async function unsubscribe() {
   state.pushActive = false;
 }
 
+// ---------- Bell button (top of the sidebar) ----------
+// On: alerts arrive. Paused: this device stays set up but stays quiet.
+// Off (never set up, blocked, unsupported): opens the Notifications dialog.
+
+let bell = null;
+
+async function deviceState() {
+  if (!supported() || (isIos() && !isStandalone()) || Notification.permission !== 'granted') return { kind: 'off' };
+  const reg = registration?.active ? registration : await navigator.serviceWorker.getRegistration('/').catch(() => null);
+  const sub = await reg?.pushManager.getSubscription().catch(() => null);
+  if (!sub) return { kind: 'off' };
+  const status = await api('/push/status', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => ({}));
+  if (!status.subscribed) return { kind: 'off' };
+  return { kind: status.paused ? 'paused' : 'on', sub };
+}
+
+export async function refreshBell() {
+  if (!bell) return;
+  const d = await deviceState();
+  bell.dataset.state = d.kind;
+  state.notifyPaused = d.kind === 'paused';
+  const label = { on: 'Notifications on for this device. Click to pause.', paused: 'Notifications paused. Click to turn back on.', off: 'Notifications are off for this device. Click to set up.' }[d.kind];
+  bell.title = label;
+  bell.setAttribute('aria-label', label);
+  bell.setAttribute('aria-pressed', String(d.kind === 'on'));
+  fill(bell, icon(d.kind === 'on' ? 'bell' : 'bellOff'));
+  return d;
+}
+
+export function bellButton() {
+  bell = h('button', { class: 'icon-btn bell-btn', 'data-state': 'off', title: 'Notifications', onclick: async () => {
+    bell.disabled = true;
+    try {
+      const d = await deviceState();
+      if (d.kind === 'off') {
+        (await notificationsDialog()).addEventListener('close', refreshBell);
+        return;
+      }
+      const paused = d.kind === 'on';
+      await api('/push/pause', { method: 'POST', body: { endpoint: d.sub.endpoint, paused } });
+      toast(paused ? 'Notifications paused on this device' : 'Notifications are back on');
+      await refreshBell();
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      bell.disabled = false;
+    }
+  } }, icon('bellOff'));
+  refreshBell();
+  return bell;
+}
+
 export function updateBadge(count) {
   if (!('setAppBadge' in navigator)) return;
   (count > 0 ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
@@ -153,6 +205,7 @@ export async function notificationsDialog() {
     const sub = await reg.pushManager.getSubscription().catch(() => null);
     const status = sub ? await api('/push/status', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => ({})) : {};
     const on = Notification.permission === 'granted' && !!sub && status.subscribed;
+    const paused = on && status.paused;
     const preview = h('input', { type: 'checkbox', class: 'switch', checked: on ? status.preview : true });
     const result = h('div', { class: 'test-result', role: 'status' });
 
@@ -169,11 +222,12 @@ export async function notificationsDialog() {
 
     fill(body,
       h('div', { class: 'status-row' },
-        on ? h('span', { class: 'pill ok' }, 'On for this device')
+        paused ? h('span', { class: 'pill warn' }, 'Paused on this device')
+          : on ? h('span', { class: 'pill ok' }, 'On for this device')
           : Notification.permission === 'denied' ? h('span', { class: 'pill warn' }, 'Blocked on this device')
           : h('span', { class: 'pill' }, 'Off for this device')),
       Notification.permission === 'denied' && !on && blockedHelp(draw),
-      h('p', { class: 'dialog-text' }, 'Get an alert and a badge on the app icon when a text arrives, even when TextBoss is closed. Each phone or computer is set up separately.'),
+      h('p', { class: 'dialog-text' }, 'Get an alert and a badge on the app icon when a text arrives, even when TextBoss is closed. Each phone or computer is set up separately. Once on, the bell at the top of the sidebar pauses and resumes them.'),
       // In a Mac browser tab, alerts show the browser's icon and the web address
       isMacBrowserTab() && h('p', { class: 'hint' },
         'Tip: for alerts that show the TextBoss name and icon instead of the browser and web address, install it as an app. In Safari choose File → Add to Dock (in Chrome: ⋮ → Cast, save and share → Install page as app), then turn notifications on from the installed app and off here.'),
@@ -185,7 +239,13 @@ export async function notificationsDialog() {
           toast('Notifications are on for this device');
           draw();
         }) }, 'Turn on notifications'),
-        on && h('button', { type: 'button', class: 'btn primary', onclick: run(async () => {
+        paused && h('button', { type: 'button', class: 'btn primary', onclick: run(async () => {
+          await api('/push/pause', { method: 'POST', body: { endpoint: sub.endpoint, paused: false } });
+          toast('Notifications are back on');
+          refreshBell();
+          draw();
+        }) }, 'Resume'),
+        on && h('button', { type: 'button', class: paused ? 'btn' : 'btn primary', onclick: run(async () => {
           await api('/push/test', { method: 'POST', body: { endpoint: sub.endpoint } });
           fill(result, h('span', { class: 'ok' }, '✓ Test sent. It should arrive within a few seconds.'));
         }) }, 'Send a test'),

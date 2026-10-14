@@ -8,6 +8,11 @@ import webpush from 'web-push';
 import { db, getSetting, setSetting, userNumberIds } from './db.js';
 import { config } from './config.js';
 
+// Paused: the device stays signed up but gets no alerts until switched back on
+if (!db.prepare('PRAGMA table_info(push_subscriptions)').all().some((c) => c.name === 'paused')) {
+  db.exec('ALTER TABLE push_subscriptions ADD COLUMN paused INTEGER NOT NULL DEFAULT 0');
+}
+
 function vapid() {
   let publicKey = getSetting('vapid.public');
   let privateKey = getSetting('vapid.private');
@@ -37,8 +42,12 @@ export function removeSubscription(endpoint) {
 }
 
 export function subscriptionStatus(endpoint) {
-  const row = db.prepare('SELECT preview FROM push_subscriptions WHERE endpoint = ?').get(endpoint);
-  return row ? { subscribed: true, preview: !!row.preview } : { subscribed: false };
+  const row = db.prepare('SELECT preview, paused FROM push_subscriptions WHERE endpoint = ?').get(endpoint);
+  return row ? { subscribed: true, preview: !!row.preview, paused: !!row.paused } : { subscribed: false };
+}
+
+export function setPaused(userId, endpoint, paused) {
+  return db.prepare('UPDATE push_subscriptions SET paused = ? WHERE user_id = ? AND endpoint = ?').run(paused ? 1 : 0, userId, endpoint).changes > 0;
 }
 
 // Unread incoming messages across a user's active numbers (the app-icon badge)
@@ -60,7 +69,7 @@ export async function pushToUsers(userIds, build, { onlyEndpoint } = {}) {
   const subs = db
     .prepare(`SELECT s.*, u.is_admin, u.theme FROM push_subscriptions s JOIN users u ON u.id = s.user_id WHERE s.user_id IN (${userIds.map(() => '?').join(',')})`)
     .all(...userIds)
-    .filter((s) => !onlyEndpoint || s.endpoint === onlyEndpoint);
+    .filter((s) => (onlyEndpoint ? s.endpoint === onlyEndpoint : !s.paused));
   await Promise.all(subs.map(async (s) => {
     const user = { id: s.user_id, is_admin: !!s.is_admin };
     let iconId = null;

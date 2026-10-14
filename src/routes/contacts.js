@@ -125,6 +125,7 @@ router.patch('/contacts/:id', (req, res) => {
 });
 
 router.delete('/contacts/:id', (req, res) => {
+  if (!req.user.is_admin) fail(403, 'Only admins can delete contacts');
   db.prepare('DELETE FROM contacts WHERE id = ?').run(Number(req.params.id));
   notifyContacts();
   res.json({ ok: true });

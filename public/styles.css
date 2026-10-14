@@ -702,3 +702,6 @@ a.btn.primary { color: var(--accent-text); }
 .code-section[hidden] { display: none; }
 .code-section label { display: grid; gap: 6px; }
 .auth-or[hidden] { display: none; }
+/* Notification bell: muted when off or paused */
+.bell-btn[data-state="off"], .bell-btn[data-state="paused"] { color: var(--text-muted); opacity: .75; }
+.bell-btn[data-state="on"] { color: var(--brand); }

@@ -372,7 +372,7 @@ async function renderContact(id, query) {
     h('div', { class: 'form-actions' },
       h('button', { class: 'btn primary', type: 'submit' }, id ? 'Save' : 'Create contact'),
       id && c.phone && h('button', { class: 'btn', type: 'button', onclick: () => messageContact(c) }, 'Message'),
-      id && h('button', {
+      id && state.me.isAdmin && h('button', {
         class: 'btn danger',
         type: 'button',
         onclick: async () => {

@@ -10,7 +10,7 @@ import { renderCanned } from './js/canned.js';
 import { renderAdmin } from './js/admin.js';
 import { applyTheme, themePicker, currentLogo } from './js/theme.js';
 import { logoSvg } from './js/logo.js';
-import { initPush, notificationsDialog, updateBadge } from './js/notify.js';
+import { initPush, notificationsDialog, updateBadge, bellButton, refreshBell } from './js/notify.js';
 import { renderSecurity, renderSecurityPage } from './js/security.js';
 import { passkeysSupported, getPasskey } from './js/webauthn.js';
 
@@ -314,6 +314,7 @@ function renderShell() {
         h('span', { class: 'logo', 'data-logo': '28', html: logoSvg(currentLogo(), { size: 28 }) }),
         h('div', { class: 'brand' }, h('span', { class: 'brand-1' }, 'Text'), h('span', { class: 'brand-2' }, 'Boss')),
         h('button', { class: 'new-btn', title: 'New message (N)', onclick: () => (location.hash = '#/new') }, icon('newchat'), h('span', {}, 'New')),
+        bellButton(),
         h('button', { class: 'icon-btn', title: 'Menu', onclick: (e) => openUserMenu(e.currentTarget) }, icon('menu'))),
       els.tabs,
       state.mockMode && h('div', { class: 'mock-banner' }, 'Mock mode: messages are not really sent.'),
@@ -381,7 +382,7 @@ function openUserMenu(anchor) {
     })],
     ['Security', () => (location.hash = '#/security')],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
-    ['Notifications', notificationsDialog],
+    ['Notifications', async () => (await notificationsDialog()).addEventListener('close', refreshBell)],
     ['Change password', changePasswordDialog],
     ['Sign out', async () => {
       await api('/logout', { method: 'POST' });
@@ -477,7 +478,7 @@ function onMessageEvent(msg) {
 
 function notify(msg) {
   // Devices with push get the alert from the service worker instead
-  if (state.pushActive || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (state.pushActive || state.notifyPaused || !('Notification' in window) || Notification.permission !== 'granted') return;
   const n = new Notification(nameFor(msg.from), {
     body: msg.body || (msg.media.length ? 'Attachment' : ''),
     tag: `conv-${msg.conversationId}`,
@@ -1012,7 +1013,7 @@ function paneMenu(p, anchor) {
       await api(`/phones/${single}/block`, { method: 'PUT', body: { blocked: !blocked } });
       toast(blocked ? 'Unblocked' : 'Blocked');
     }, blocked ? '' : 'danger'],
-    ['Delete history', async () => {
+    state.me.isAdmin && ['Delete history', async () => {
       if (!(await confirmDialog('Delete this conversation?', 'Every message in this conversation will be permanently deleted for all users. This cannot be undone.', 'Delete', { danger: true }))) return;
       await api(`/conversations/${t.id}`, { method: 'DELETE' });
       toast('Conversation deleted');
