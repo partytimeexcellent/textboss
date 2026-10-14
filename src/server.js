@@ -410,8 +410,15 @@ api.get('/me', (req, res) => {
     numbers,
     mockMode: isMockMode(),
     security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled },
+    tourDone: !!db.prepare('SELECT tour_done_at FROM users WHERE id = ?').get(req.user.id).tour_done_at,
     theme: JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? 'null'),
   });
+});
+
+// The welcome tour is shown until someone finishes or closes it once
+api.post('/me/tour', (req, res) => {
+  db.prepare('UPDATE users SET tour_done_at = ? WHERE id = ?').run(Date.now(), req.user.id);
+  res.json({ ok: true });
 });
 
 // Appearance: { preset, accent, highlight, mode, logo, labelOwn } chosen in the theme picker

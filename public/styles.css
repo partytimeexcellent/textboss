@@ -705,3 +705,37 @@ a.btn.primary { color: var(--accent-text); }
 /* Notification bell: muted when off or paused */
 .bell-btn[data-state="off"], .bell-btn[data-state="paused"] { color: var(--text-muted); opacity: .75; }
 .bell-btn[data-state="on"] { color: var(--brand); }
+
+/* ---------- Welcome tour ---------- */
+.tour { position: fixed; inset: 0; z-index: 70; }
+.tour.dim { background: rgba(0, 0, 0, .55); }
+.tour-spot {
+  position: fixed; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55), 0 0 0 2px var(--brand);
+  transition: left .25s, top .25s, width .25s, height .25s;
+}
+.tour-card {
+  position: fixed; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; display: grid; gap: 10px;
+  max-height: calc(100dvh - 32px); overflow: auto; transition: opacity .15s;
+}
+.tour-card.loading { opacity: .6; }
+.tour-head { display: flex; align-items: flex-start; gap: 8px; }
+.tour-head h2 { margin: 0; font-size: 17px; flex: 1; }
+.tour-body { display: grid; gap: 8px; font-size: 14.5px; line-height: 1.45; }
+.tour-body p { margin: 0; }
+.tour-body .steps { margin: 4px 0 0; padding-left: 20px; }
+.tour-more summary { cursor: pointer; color: var(--link); font-size: 13.5px; }
+.tour-more[open] { display: grid; gap: 4px; }
+.tour-foot { display: flex; align-items: center; gap: 8px; }
+.tour-count { flex: 1; font-size: 12.5px; color: var(--text-muted); }
+.tour-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tour-checklist li { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; }
+.tour-checklist li .btn { padding: 5px 10px; }
+.tour-check {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border);
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; margin-top: 1px;
+}
+.tour-checklist li.done .tour-check { background: var(--ok); border-color: var(--ok); color: #fff; }
+.tour-checklist li.done strong { color: var(--text-muted); text-decoration: line-through; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

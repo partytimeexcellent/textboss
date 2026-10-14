@@ -314,6 +314,8 @@ export function isBlocked(phone) {
   return !!db.prepare('SELECT 1 FROM blocked WHERE phone = ?').get(phone);
 }
 
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'tour_done_at')) db.exec('ALTER TABLE users ADD COLUMN tour_done_at INTEGER');
+
 export function serializeMessage(row) {
   return {
     id: row.id,

@@ -10,6 +10,7 @@ import { renderCanned } from './js/canned.js';
 import { renderAdmin } from './js/admin.js';
 import { applyTheme, themePicker, currentLogo } from './js/theme.js';
 import { logoSvg } from './js/logo.js';
+import { startTour } from './js/tour.js';
 import { initPush, notificationsDialog, updateBadge, bellButton, refreshBell } from './js/notify.js';
 import { renderSecurity, renderSecurityPage } from './js/security.js';
 import { passkeysSupported, getPasskey } from './js/webauthn.js';
@@ -32,6 +33,7 @@ async function boot() {
     state.mockMode = me.mockMode;
     state.theme = applyTheme(me.theme);
     state.security = me.security;
+    state.tourDone = me.tourDone;
     initPush();
   } catch {
     state.me = null;
@@ -295,6 +297,23 @@ function renderSetupRequired() {
   });
 }
 
+// ---------- Welcome tour ----------
+
+function runTour() {
+  startTour({
+    onFinish: () => {
+      if (state.tourDone) return;
+      state.tourDone = true;
+      api('/me/tour', { method: 'POST' }).catch(() => {});
+    },
+    actions: {
+      notifications: async () => (await notificationsDialog()).addEventListener('close', refreshBell),
+      security: () => (location.hash = '#/security'),
+      admin: () => (location.hash = '#/admin'),
+    },
+  });
+}
+
 // ---------- Shell ----------
 
 function renderShell() {
@@ -326,10 +345,12 @@ function renderShell() {
   els.sidebarTab = null;
 
   connectEvents();
-  Promise.all([loadIndex(), loadCanned(), loadLists()]).then(() => {
-    loadConversations();
+  Promise.all([loadIndex(), loadCanned(), loadLists()]).then(async () => {
+    await loadConversations();
     els.sidebarTab = null; // redraw the sidebar now that names and lists are loaded
     renderRoute();
+    // First sign-in: show the welcome tour once the list is drawn
+    if (!state.tourDone) setTimeout(runTour, 400);
   });
   renderRoute();
 }
@@ -382,6 +403,7 @@ function openUserMenu(anchor) {
     })],
     ['Security', () => (location.hash = '#/security')],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
+    ['Take the tour', runTour],
     ['Refresh', () => location.reload()],
     ['Notifications', async () => (await notificationsDialog()).addEventListener('close', refreshBell)],
     ['Change password', changePasswordDialog],
