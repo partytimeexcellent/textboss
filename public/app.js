@@ -79,6 +79,7 @@ async function renderAuth() {
         h('label', {}, 'Email (for password resets)', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'email' })),
         h('label', {}, 'Password', h('input', { type: 'password', name: 'password', required: true, minLength: 10, autocomplete: 'new-password' }),
           h('span', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.')),
+        h('label', {}, 'Confirm password', h('input', { type: 'password', name: 'confirm', required: true, autocomplete: 'new-password' })),
       ]
     : [
         h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'username webauthn' })),
@@ -91,8 +92,14 @@ async function renderAuth() {
       onsubmit: async (e) => {
         e.preventDefault();
         error.textContent = '';
+        const body = Object.fromEntries(new FormData(form));
+        if (setup.needed && body.password !== body.confirm) {
+          error.textContent = 'The two passwords don\'t match';
+          return;
+        }
+        delete body.confirm;
         try {
-          const r = await api(setup.needed ? '/setup' : '/login', { method: 'POST', body: Object.fromEntries(new FormData(form)) });
+          const r = await api(setup.needed ? '/setup' : '/login', { method: 'POST', body });
           if (r.mfa) return renderSecondStep(r.mfa, logo);
           await boot();
         } catch (err) {
@@ -248,10 +255,15 @@ function renderResetCode(logo, login) {
   const error = h('div', { class: 'form-error' });
   const code = h('input', { type: 'text', name: 'code', required: true, inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '123 456', class: 'code-input' });
   const pw = h('input', { type: 'password', name: 'password', required: true, minLength: 10, autocomplete: 'new-password' });
+  const pw2 = h('input', { type: 'password', name: 'confirm', required: true, autocomplete: 'new-password' });
   const form = h('form', {
     onsubmit: async (e) => {
       e.preventDefault();
       error.textContent = '';
+      if (pw.value !== pw2.value) {
+        error.textContent = 'The two passwords don\'t match';
+        return;
+      }
       try {
         await api('/password/reset', { method: 'POST', body: { login, code: code.value, password: pw.value } });
         toast('Password changed');
@@ -266,6 +278,7 @@ function renderResetCode(logo, login) {
     h('p', { class: 'hint' }, 'If that account has an email address, a 6-digit code is on its way. It can take a minute; check spam too. No email? Your administrator can reset your password.'),
     h('label', {}, 'Code from the email', code),
     h('label', {}, 'New password', pw, h('span', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.')),
+    h('label', {}, 'Confirm new password', pw2),
     error,
     h('button', { class: 'btn primary', type: 'submit' }, 'Change password and sign in'),
     h('div', { class: 'auth-links' },
@@ -444,10 +457,12 @@ function changePasswordDialog() {
       h('label', {}, 'Current password', h('input', { type: 'password', name: 'current', required: true, autocomplete: 'current-password' })),
       h('label', {}, 'New password', h('input', { type: 'password', name: 'next', required: true, minLength: 10, autocomplete: 'new-password' })),
       h('p', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.'),
+      h('label', {}, 'Confirm new password', h('input', { type: 'password', name: 'confirm', required: true, autocomplete: 'new-password' })),
     ],
     'Save',
     async (data) => {
-      await api('/me/password', { method: 'POST', body: Object.fromEntries(data) });
+      if (data.get('next') !== data.get('confirm')) throw new Error('The two passwords don\'t match');
+      await api('/me/password', { method: 'POST', body: { current: data.get('current'), next: data.get('next') } });
       toast('Password changed');
     },
   );

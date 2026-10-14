@@ -297,11 +297,13 @@ async function renderUsers() {
       h('label', {}, u ? 'Email (for password resets and emailed sign-in codes)' : 'Email (required: for password resets and sign-in codes)', h('input', { type: 'email', name: 'email', value: u?.email ?? '', required: !u, autocomplete: 'off' })),
       h('label', {}, u ? 'New password (leave blank to keep)' : 'Password', h('input', { type: 'password', name: 'password', required: !u, minLength: 10, autocomplete: 'new-password' })),
       h('p', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.'),
+      h('label', {}, 'Confirm password', h('input', { type: 'password', name: 'confirm', required: !u, autocomplete: 'new-password' })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'isAdmin', checked: !!u?.isAdmin }), 'Admin: sees every number and can change these settings'),
       h('div', { class: 'field-label' }, 'Numbers this user can use'), numberChecks(u?.numberIds),
     ],
     u ? 'Save' : 'Add user',
     async (data) => {
+      if ((data.get('password') || data.get('confirm')) && data.get('password') !== data.get('confirm')) throw new Error('The two passwords don\'t match');
       const body = { displayName: data.get('displayName'), email: data.get('email'), isAdmin: data.get('isAdmin') === 'on', numberIds: data.getAll('numberIds').map(Number) };
       if (data.get('password')) body.password = data.get('password');
       if (u) await api(`/admin/users/${u.id}`, { method: 'PATCH', body });

@@ -125,7 +125,7 @@ function steps(actions) {
       title: 'Who said what',
       body: [
         'Clients are on the left and the practice is on the right.',
-        'Texts a teammate sent show their name and a slightly different shade, so you know who already replied. You can label your own too under ⋮ → Appearance.',
+        'Every text from the practice shows who sent it. A teammate\'s are a different shade from yours, so you can see at a glance who already replied.',
       ],
     },
     {
@@ -184,8 +184,9 @@ async function checklistItems(actions) {
       text: isIos() && !isStandalone() ? 'On iPhone, add TextBoss to your Home Screen first (below).' : 'So you know when a client texts.',
       label: 'Turn on', run: actions.notifications,
     },
-    {
-      done: !!sec.email,
+    // New accounts always have an email; only older ones can be missing it
+    !sec.email && {
+      done: false,
       title: 'Add your email address',
       text: 'Lets you reset a forgotten password, or get a sign-in code if you don\'t have your phone.',
       label: 'Add email', run: actions.security,
@@ -215,7 +216,7 @@ async function checklistItems(actions) {
       label: 'Open', run: actions.admin,
     });
   }
-  return items;
+  return items.filter(Boolean);
 }
 
 let active = null;
