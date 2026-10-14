@@ -19,6 +19,8 @@ import {
   setInactive,
   reactivate,
   fullName,
+  setDisplayContact,
+  isDisplayContact,
 } from '../contacts.js';
 import { createBroadcast, serializeBroadcast } from '../messaging.js';
 
@@ -84,6 +86,13 @@ router.get('/contacts', (req, res) => {
   res.json(result);
 });
 
+// Use this contact's name for a phone number several contacts share
+router.post('/contacts/:id/display-name', (req, res) => {
+  if (!setDisplayContact(Number(req.params.id))) fail(400, 'This contact has no phone number');
+  notifyContacts();
+  res.json({ ok: true });
+});
+
 // Mark contacts inactive (hidden from the list) or active again
 router.post('/contacts/status', (req, res) => {
   const ids = (req.body?.ids ?? []).map(Number).filter(Boolean).slice(0, 20000);
@@ -118,6 +127,7 @@ router.get('/contacts/:id', (req, res) => {
         .map((r) => ({ id: r.id, name: fullName(r) || '(no name)', inactive: !!r.inactive_at }))
     : [];
   contact.sharedPhone = contact.sharedWith.length;
+  contact.isDisplayName = contact.sharedPhone > 0 && isDisplayContact(contact.id);
   res.json(contact);
 });
 

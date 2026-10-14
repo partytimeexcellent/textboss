@@ -1126,7 +1126,15 @@ function clientCard(c) {
     c.notes
       ? h('div', { class: 'cp-notes' }, h('div', { class: 'cp-label' }, 'Notes'), h('div', { class: 'cp-notes-text' }, c.notes))
       : h('div', { class: 'cp-notes hint' }, 'No notes yet.'),
-    h('div', { class: 'cp-actions' }, h('a', { class: 'btn', href: `#/contacts/${c.id}` }, 'Edit contact')));
+    h('div', { class: 'cp-actions' },
+      h('a', { class: 'btn', href: `#/contacts/${c.id}` }, 'Edit contact'),
+      // Shared number: choose whose name the conversation shows
+      c.sharedPhone > 0 && (c.isDisplayName
+        ? h('span', { class: 'hint' }, 'Name shown')
+        : h('button', { type: 'button', class: 'link-btn', onclick: async () => {
+            await api(`/contacts/${c.id}/display-name`, { method: 'POST' });
+            toast(`Conversation now shows ${fullName(c)}`);
+          } }, 'Show this name'))));
 }
 
 let panelSeq = 0;

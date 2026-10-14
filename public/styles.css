@@ -840,3 +840,6 @@ dialog.wide.xl { width: min(920px, calc(100vw - 32px)); }
   :root.conv-comfortable.conv-card .pane-main .messages { margin-top: 12px; }
   :root.conv-comfortable.conv-card .pane-main .composer { margin-bottom: 12px; }
 }
+.shared-display { margin-top: 8px; }
+.shared-display .btn { padding: 5px 12px; font-size: 13px; }
+.cp-actions { display: flex; align-items: center; gap: 12px; }

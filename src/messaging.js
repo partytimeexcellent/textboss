@@ -11,7 +11,7 @@ import {
 import { publish } from './events.js';
 import { isMockMode, activeProvider } from './provider.js';
 import { normalizePhone, participantsKey } from './phone.js';
-import { setOptOut, fullName, reactivatePhones } from './contacts.js';
+import { setOptOut, fullName, reactivatePhones, primaryContactFor } from './contacts.js';
 import { pushToUsers } from './push.js';
 import { afterHoursReply } from './hours.js';
 import * as bulkvs from './bulkvs.js';
@@ -137,7 +137,7 @@ export function recordInbound({ from, to, body, media, refId = null }) {
 
 // Lock-screen alert + app badge on every device that turned notifications on
 async function notifyDevices(conversation, number, sender, body, media) {
-  const contact = db.prepare('SELECT first_name, last_name, nickname FROM contacts WHERE phone = ? ORDER BY id LIMIT 1').get(sender);
+  const contact = primaryContactFor(sender);
   const name = (contact && fullName(contact)) || formatPhone(sender);
   const text = String(body ?? '').trim() || (media?.length ? 'Sent an attachment' : '');
   await pushToUsers(userIdsForNumber(number.id), (_user, preview) => ({
@@ -151,7 +151,7 @@ async function notifyDevices(conversation, number, sender, body, media) {
 const formatPhone = (p) => (/^\d{10}$/.test(p) ? `(${p.slice(0, 3)}) ${p.slice(3, 6)}-${p.slice(6)}` : p);
 
 function firstContactFor(phone) {
-  return db.prepare('SELECT first_name, last_name, nickname FROM contacts WHERE phone = ? ORDER BY id LIMIT 1').get(phone);
+  return primaryContactFor(phone);
 }
 
 export function mergeFields(text, contact) {

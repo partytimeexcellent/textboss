@@ -373,7 +373,14 @@ async function renderContact(id, query) {
     c.sharedWith?.length > 0 && h('div', { class: 'shared-phone' }, icon('user'),
       h('span', {}, 'Also at this number: ',
         c.sharedWith.map((o, i) => [i > 0 && ', ', h('a', { href: `#/contacts/${o.id}` }, o.name), o.inactive && h('span', { class: 'hint' }, ' (inactive)')]),
-        h('span', { class: 'hint' }, '. Conversations with this number show the first contact\'s name and "+', String(c.sharedWith.length), '". If one is a duplicate, delete it or merge the details.'))),
+        h('span', { class: 'hint' }, `. Conversations with this number show ${c.isDisplayName ? 'this contact\'s' : 'another contact\'s'} name and "+${c.sharedWith.length}". If one is a duplicate, delete it or merge the details.`),
+        h('div', { class: 'shared-display' }, c.isDisplayName
+          ? h('span', { class: 'pill ok' }, '✓ Name shown for this number')
+          : h('button', { type: 'button', class: 'btn', onclick: async () => {
+              await api(`/contacts/${id}/display-name`, { method: 'POST' });
+              toast(`Conversations with this number now show ${fullName(c)}`);
+              renderContact(id);
+            } }, 'Show this name for the number')))),
     c.blocked && h('p', { class: 'hint bad' }, 'Texts from this number are blocked. ',
       h('button', { type: 'button', class: 'link-btn', onclick: async () => {
         await api(`/phones/${c.phone}/block`, { method: 'PUT', body: { blocked: false } });

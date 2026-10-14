@@ -384,21 +384,44 @@ export function logImport(source, filename, result, error = null) {
   db.prepare('DELETE FROM import_log WHERE id <= (SELECT MAX(id) - 200 FROM import_log)').run();
 }
 
-// phone -> display name, for conversation lists
+// ---------- Shared phone numbers ----------
+//
+// Several contacts can share a phone (a family). The one picked as the number's
+// display name comes first; otherwise the oldest contact, so adding a family
+// member doesn't rename an existing conversation.
+db.exec(`CREATE TABLE IF NOT EXISTS phone_display (
+  phone      TEXT PRIMARY KEY,
+  contact_id INTEGER NOT NULL
+)`);
+const PHONE_ORDER = '(c.id IS (SELECT pd.contact_id FROM phone_display pd WHERE pd.phone = c.phone)) DESC, c.id';
+
+export function primaryContactFor(phone) {
+  return db.prepare(`SELECT c.* FROM contacts c WHERE c.phone = ? ORDER BY ${PHONE_ORDER} LIMIT 1`).get(phone);
+}
+
+export function setDisplayContact(contactId) {
+  const c = db.prepare('SELECT id, phone FROM contacts WHERE id = ?').get(contactId);
+  if (!c?.phone) return false;
+  db.prepare('INSERT INTO phone_display (phone, contact_id) VALUES (?, ?) ON CONFLICT (phone) DO UPDATE SET contact_id = excluded.contact_id').run(c.phone, c.id);
+  return true;
+}
+
+export const isDisplayContact = (contactId) => primaryContactFor(db.prepare('SELECT phone FROM contacts WHERE id = ?').get(contactId)?.phone ?? '')?.id === contactId;
+
+// phone -> display names (the display contact first), for conversation lists
 export function contactNames() {
   const rows = db
-    // Oldest first, so adding a family member doesn't rename an existing conversation
-    .prepare(`SELECT phone, first_name, last_name, nickname FROM contacts WHERE phone != '' ORDER BY id`)
+    .prepare(`SELECT c.phone, c.first_name, c.last_name, c.nickname FROM contacts c WHERE c.phone != '' ORDER BY ${PHONE_ORDER}`)
     .all();
   const map = {};
   for (const r of rows) (map[r.phone] ??= []).push(fullName(r) || r.phone);
   return map;
 }
 
-// phone -> [first, last, nickname] of the earliest contact, for merge fields
+// phone -> [first, last, nickname] of the display contact, for merge fields
 export function contactMergeNames() {
   const map = {};
-  for (const r of db.prepare(`SELECT phone, first_name, last_name, nickname FROM contacts WHERE phone != '' ORDER BY id`).all()) {
+  for (const r of db.prepare(`SELECT c.phone, c.first_name, c.last_name, c.nickname FROM contacts c WHERE c.phone != '' ORDER BY ${PHONE_ORDER}`).all()) {
     map[r.phone] ??= [r.first_name, r.last_name, r.nickname];
   }
   return map;
