@@ -13,6 +13,7 @@ import { isMockMode, activeProvider } from './provider.js';
 import { normalizePhone, participantsKey } from './phone.js';
 import { setOptOut, fullName, reactivatePhones } from './contacts.js';
 import { pushToUsers } from './push.js';
+import { afterHoursReply } from './hours.js';
 import * as bulkvs from './bulkvs.js';
 import * as voipms from './voipms.js';
 
@@ -166,8 +167,10 @@ export function mergeFields(text, contact) {
     .replace(/ ([,.!?])/g, '$1');
 }
 
-// Keyword match first; otherwise the active away message, at most once per
-// conversation every 12 hours. Group threads and opted-out senders get nothing.
+// Keyword match first; then the away message if someone switched it on (at most
+// once per conversation every 12 hours); otherwise, when the office-hours
+// schedule says closed, the after-hours reply (once per conversation per
+// closed stretch). Group threads and opted-out senders get nothing.
 async function autoReply(conversation, number, sender, text) {
   if (conversation.participants.includes(',') || isOptedOut(sender)) return;
 
@@ -176,10 +179,16 @@ async function autoReply(conversation, number, sender, text) {
     : null;
 
   if (!reply) {
-    reply = db.prepare('SELECT * FROM canned_responses WHERE is_away = 1 LIMIT 1').get();
-    if (!reply) return;
-    const last = db.prepare('SELECT sent_at FROM away_sent WHERE conversation_id = ?').get(conversation.id);
-    if (last && Date.now() - last.sent_at < AWAY_INTERVAL) return;
+    const last = db.prepare('SELECT sent_at FROM away_sent WHERE conversation_id = ?').get(conversation.id)?.sent_at ?? 0;
+    const away = db.prepare('SELECT * FROM canned_responses WHERE is_away = 1 LIMIT 1').get();
+    if (away) {
+      if (Date.now() - last < AWAY_INTERVAL) return;
+      reply = away;
+    } else {
+      const closed = afterHoursReply();
+      if (!closed || last >= closed.since) return;
+      reply = { body: closed.body, media: '[]' };
+    }
     db.prepare(
       'INSERT INTO away_sent (conversation_id, sent_at) VALUES (?, ?) ON CONFLICT (conversation_id) DO UPDATE SET sent_at = excluded.sent_at',
     ).run(conversation.id, Date.now());

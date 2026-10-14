@@ -88,7 +88,7 @@ a { color: var(--link); }
 .icon-btn:hover { background: var(--bg-hover); color: var(--text); }
 .icon-btn svg { width: 20px; height: 20px; }
 
-input[type=text], input[type=number], input[type=password], input[type=tel], input[type=search], input[type=email], input[type=date], select, textarea {
+input[type=text], input[type=number], input[type=password], input[type=tel], input[type=search], input[type=email], input[type=date], input[type=time], select, textarea {
   border: 1px solid var(--border);
   background: var(--bg-input);
   border-radius: 8px;
@@ -752,3 +752,16 @@ a.btn.primary { color: var(--accent-text); }
 }
 .provider-form { display: grid; gap: 12px; }
 .provider-form > .hint { margin: 0; }
+
+/* Office hours */
+.hours-week { display: grid; gap: 6px; }
+.hours-day { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.hours-day:last-child { border-bottom: 0; }
+.hours-name { font-weight: 600; padding-top: 6px; }
+.hours-ranges { display: grid; gap: 6px; justify-items: start; }
+.hours-range { display: flex; align-items: center; gap: 8px; }
+.hours-range input[type=time] { width: 130px; }
+.hours-ranges > .hint { padding-top: 6px; }
+.table.closures input { width: 100%; min-width: 110px; }
+.sticky-save { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; border-top: 1px solid var(--border); }
+@media (max-width: 760px) { .hours-day { grid-template-columns: 1fr; } }

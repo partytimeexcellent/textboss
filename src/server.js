@@ -41,6 +41,7 @@ import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
 import * as email from './email.js';
+import { getHours, saveHours, hoursStatus } from './hours.js';
 import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, setPaused, pushToUsers, unreadTotal } from './push.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -847,6 +848,23 @@ admin.post('/users/:id/reset-2fa', (req, res) => {
 });
 
 admin.get('/security', (_req, res) => res.json({ require2fa: mfa.mfaRequired() }));
+
+// ----- Office hours -----
+
+admin.get('/hours', (_req, res) => {
+  const cfg = getHours();
+  res.json({ config: cfg, saved: !!getSetting('hours.config'), status: hoursStatus(Date.now(), cfg), away: !!db.prepare('SELECT 1 FROM canned_responses WHERE is_away = 1').get() });
+});
+
+admin.put('/hours', (req, res) => {
+  let cfg;
+  try {
+    cfg = saveHours(req.body);
+  } catch (err) {
+    fail(400, err.message);
+  }
+  res.json({ config: cfg, status: hoursStatus(Date.now(), cfg) });
+});
 
 // ----- Email (SMTP) -----
 

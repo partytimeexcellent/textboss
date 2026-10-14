@@ -10,7 +10,7 @@ export async function renderCanned() {
     paneHead('Canned responses', h('button', { class: 'btn primary', onclick: () => editCanned(null) }, 'Add canned response')),
     h('div', { class: 'admin' },
       h('section', {},
-        h('p', { class: 'hint' }, 'Insert these from the ', h('strong', {}, 'canned responses'), ' button next to the message box. A keyword makes TextBoss reply automatically when someone texts exactly that word. The away message, when one is on, auto-replies to other incoming texts (once per conversation every 12 hours).'),
+        h('p', { class: 'hint' }, 'Insert these from the ', h('strong', {}, 'canned responses'), ' button next to the message box. A keyword makes TextBoss reply automatically when someone texts exactly that word. The away message, when one is on, auto-replies to other incoming texts (once per conversation every 12 hours). Use it for unplanned closures; regular closed hours and holidays are set by an admin under Admin settings → Office hours. While an away message is on, it is sent instead of the after-hours reply.'),
         away && h('div', { class: 'away-on' }, h('strong', {}, 'Away message is on: '), away.name, ' ',
           h('button', { class: 'link-btn', onclick: () => save(away, { ...away, isAway: false }) }, 'Turn off'))),
       h('section', {},

@@ -11,6 +11,7 @@ const TABS = [
   ['numbers', 'Numbers'],
   ['users', 'Users'],
   ['email', 'Email'],
+  ['hours', 'Office hours'],
   ['contacts', 'Contacts & Import'],
   ['blocked', 'Blocked'],
   ['backup', 'Backup'],
@@ -41,7 +42,7 @@ export async function renderAdmin() {
     body);
   fill(body, h('div', { class: 'hint' }, 'Loading…'));
   try {
-    const render = { bulkvs: renderProvider, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderProvider;
+    const render = { bulkvs: renderProvider, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, hours: renderHours, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderProvider;
     const content = await render();
     if (route().view !== 'admin' || route().section !== section) return; // navigated away meanwhile
     fill(body, content);
@@ -355,6 +356,142 @@ function securityPolicyCard(security, users) {
         h('span', { class: 'hint' }, ' — people without it are taken through setup the next time they use TextBoss.'))),
     missing.length > 0 && h('p', { class: 'hint' }, `Not set up yet: ${missing.map((u) => u.displayName).join(', ')}.`),
     h('p', { class: 'hint' }, 'Someone without their phone or key can get an emailed code instead, if their email is saved and email is set up (Admin settings → Email). Otherwise use Reset 2FA next to their name. Failed sign-ins lock that username for 15 minutes after 8 wrong passwords or 6 wrong codes.'));
+}
+
+// ---------- Office hours ----------
+
+const DAY_NAMES = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
+
+// Common US office holidays falling in the next 12 months
+function usHolidays(from = new Date()) {
+  const out = [];
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const nth = (y, m, weekday, n) => { // n-th weekday of month (n = -1: last)
+    if (n > 0) {
+      const d = new Date(y, m, 1);
+      d.setDate(1 + ((weekday - d.getDay() + 7) % 7) + (n - 1) * 7);
+      return d;
+    }
+    const d = new Date(y, m + 1, 0);
+    d.setDate(d.getDate() - ((d.getDay() - weekday + 7) % 7));
+    return d;
+  };
+  for (const y of [from.getFullYear(), from.getFullYear() + 1]) {
+    out.push(['New Year\'s Day', new Date(y, 0, 1)], ['Memorial Day', nth(y, 4, 1, -1)], ['Independence Day', new Date(y, 6, 4)],
+      ['Labor Day', nth(y, 8, 1, 1)], ['Thanksgiving', nth(y, 10, 4, 4)], ['Christmas Day', new Date(y, 11, 25)]);
+  }
+  const end = new Date(from);
+  end.setFullYear(end.getFullYear() + 1);
+  const today = iso(from);
+  return out.filter(([, d]) => iso(d) >= today && d <= end).map(([name, d]) => ({ from: iso(d), to: iso(d), name, message: '' }));
+}
+
+async function renderHours() {
+  const data = await api('/admin/hours');
+  const cfg = structuredClone(data.config);
+  // First time: the server's zone is often UTC (Docker), so start from this browser's
+  if (!data.saved) cfg.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || cfg.timezone;
+  const fmt = (ts) => ts ? new Date(ts).toLocaleString([], { timeZone: cfg.timezone, weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+  const statusPill = (st) => !st.enabled ? pill('Schedule off', '')
+    : st.open ? pill(`Open now${st.until ? ` · closes ${fmt(st.until)}` : ''}`, 'ok')
+    : pill(`Closed now${st.closure ? ` (${st.closure.name || 'closure'})` : ''}${st.until ? ` · opens ${fmt(st.until)}` : ''}`, 'warn');
+  const statusRow = h('div', { class: 'status-row' }, statusPill(data.status));
+
+  const enabled = h('input', { type: 'checkbox', class: 'switch', checked: cfg.enabled });
+  const zones = (Intl.supportedValuesOf?.('timeZone') ?? [cfg.timezone]).filter((z) => /^(America|Pacific\/Honolulu|US\/)/.test(z) || z === cfg.timezone);
+  const tz = h('select', {}, zones.map((z) => h('option', { value: z, selected: z === cfg.timezone }, z.replace(/_/g, ' '))));
+  tz.addEventListener('change', () => (cfg.timezone = tz.value));
+  const message = h('textarea', { rows: 3, maxlength: 1600 }, cfg.message);
+
+  // Weekly hours
+  const weekBox = h('div', { class: 'hours-week' });
+  const timeInput = (value, onchange) => h('input', { type: 'time', value, step: 300, onchange: (e) => onchange(e.target.value) });
+  const drawWeek = () => fill(weekBox, DAY_NAMES.map(([d, name]) => {
+    const ranges = cfg.week[d];
+    const open = h('input', { type: 'checkbox', checked: ranges.length > 0, onchange: (e) => {
+      cfg.week[d] = e.target.checked ? [{ start: '08:00', end: '17:00' }] : [];
+      drawWeek();
+    } });
+    return h('div', { class: 'hours-day' },
+      h('label', { class: 'check hours-name' }, open, name),
+      h('div', { class: 'hours-ranges' },
+        ranges.length ? ranges.map((r, i) => h('div', { class: 'hours-range' },
+          timeInput(r.start, (v) => (r.start = v)), h('span', { class: 'hint' }, 'to'), timeInput(r.end, (v) => (r.end = v)),
+          ranges.length > 1 && h('button', { type: 'button', class: 'icon-btn', title: 'Remove these hours', onclick: () => { ranges.splice(i, 1); drawWeek(); } }, icon('close'))))
+          : h('span', { class: 'hint' }, 'Closed all day'),
+        ranges.length > 0 && ranges.length < 3 && h('button', { type: 'button', class: 'link-btn', onclick: () => {
+          const last = ranges.at(-1);
+          ranges.push({ start: last.end < '13:00' ? '13:00' : last.end, end: '17:00' });
+          drawWeek();
+        } }, '+ Add hours (e.g. after lunch)')));
+  }));
+  drawWeek();
+  const copyMonday = h('button', { type: 'button', class: 'btn', onclick: () => {
+    for (const d of ['tue', 'wed', 'thu', 'fri']) cfg.week[d] = structuredClone(cfg.week.mon);
+    drawWeek();
+    toast('Monday\'s hours copied to Tuesday–Friday');
+  } }, 'Copy Monday to weekdays');
+
+  // Closures
+  const closureBox = h('div', {});
+  const drawClosures = () => fill(closureBox, cfg.closures.length
+    ? h('div', { class: 'table-wrap' }, h('table', { class: 'table compact closures' },
+        h('thead', {}, h('tr', {}, ['Name', 'From', 'To', 'Message (optional)', ''].map((t) => h('th', {}, t)))),
+        h('tbody', {}, cfg.closures.map((c, i) => h('tr', {},
+          h('td', {}, h('input', { type: 'text', value: c.name, placeholder: 'e.g. Christmas', oninput: (e) => (c.name = e.target.value) })),
+          h('td', {}, h('input', { type: 'date', value: c.from, onchange: (e) => { c.from = e.target.value; if (!c.to || c.to < c.from) { c.to = c.from; drawClosures(); } } })),
+          h('td', {}, h('input', { type: 'date', value: c.to, onchange: (e) => (c.to = e.target.value) })),
+          h('td', {}, h('input', { type: 'text', value: c.message, placeholder: 'Uses the after-hours reply', oninput: (e) => (c.message = e.target.value) })),
+          h('td', {}, h('button', { type: 'button', class: 'icon-btn', title: 'Remove', onclick: () => { cfg.closures.splice(i, 1); drawClosures(); } }, icon('close'))))))))
+    : h('p', { class: 'empty-note' }, 'No closures yet.'));
+  drawClosures();
+  const today = new Date().toLocaleDateString('en-CA');
+  const addClosure = h('button', { type: 'button', class: 'btn', onclick: () => {
+    cfg.closures.push({ from: today, to: today, name: '', message: '' });
+    drawClosures();
+  } }, icon('plus'), 'Add a closure');
+  const addHolidays = h('button', { type: 'button', class: 'btn', onclick: () => {
+    const have = new Set(cfg.closures.map((c) => c.from));
+    const add = usHolidays().filter((x) => !have.has(x.from));
+    cfg.closures.push(...add);
+    cfg.closures.sort((a, b) => a.from.localeCompare(b.from));
+    drawClosures();
+    toast(add.length ? `Added ${add.length} holidays. Remove any you stay open for, then Save.` : 'Those holidays are already listed');
+  } }, 'Add US holidays (next 12 months)');
+
+  const result = h('div', { class: 'test-result', role: 'status' });
+  const save = h('button', { class: 'btn primary', onclick: async () => {
+    try {
+      const r = await api('/admin/hours', { method: 'PUT', body: { ...cfg, enabled: enabled.checked, message: message.value } });
+      Object.assign(cfg, structuredClone(r.config));
+      fill(statusRow, statusPill(r.status));
+      fill(result);
+      drawWeek();
+      drawClosures();
+      toast('Office hours saved');
+    } catch (err) {
+      fill(result, h('span', { class: 'bad' }, '✕ ', err.message));
+    }
+  } }, 'Save');
+
+  return [
+    card('After-hours auto-reply',
+      'When a client texts while the office is closed, TextBoss replies automatically, once per conversation until you reopen. Keyword replies still work any time. Group texts and opted-out clients never get auto-replies.',
+      statusRow,
+      data.away && h('p', { class: 'callout warn' }, icon('warning'), h('span', {}, 'The away message is switched on under Canned responses, so it is sent instead of the after-hours reply. Turn it off there to use this schedule.')),
+      h('label', { class: 'switch-label' }, enabled, h('span', {}, h('strong', {}, 'Reply automatically outside office hours'))),
+      h('div', { class: 'form-grid' }, field('Time zone', tz), h('div')),
+      field('After-hours reply', message, 'Merge fields work here: {first_name}, {last_name}, {full_name}, {nickname}.')),
+    card('Office hours',
+      'Times are in the time zone above. Add a second set of hours for a lunch break.',
+      weekBox,
+      h('div', { class: 'card-actions' }, copyMonday)),
+    card('Holidays and closures',
+      'Closed all day on these dates, whatever the weekly hours say. Give one its own message to mention when you reopen.',
+      closureBox,
+      h('div', { class: 'card-actions' }, addClosure, addHolidays)),
+    h('div', { class: 'card-actions sticky-save' }, save, result),
+  ];
 }
 
 // ---------- Email ----------
