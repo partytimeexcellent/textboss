@@ -182,6 +182,7 @@ router.put('/phones/:phone/opt-out', (req, res) => {
 });
 
 router.put('/phones/:phone/block', (req, res) => {
+  if (!req.user.is_admin) fail(403, 'Only admins can block or unblock senders');
   const phone = req.params.phone.replace(/\D/g, '');
   if (req.body?.blocked) {
     db.prepare('INSERT OR IGNORE INTO blocked (phone, blocked_by, created_at) VALUES (?, ?, ?)').run(phone, req.user.id, Date.now());

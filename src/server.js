@@ -41,6 +41,7 @@ import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
 import * as email from './email.js';
+import { passwordProblem } from './passwords.js';
 import { getHours, saveHours, hoursStatus } from './hours.js';
 import { showMfaBanner, snoozeMfaBanner, remindersOn, setRemindersOn, startReminderJob } from './reminders.js';
 import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, setPaused, pushToUsers, unreadTotal } from './push.js';
@@ -196,12 +197,12 @@ api.post('/setup', (req, res) => {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n > 0) fail(409, 'Setup is already done');
   const { username, password, displayName } = req.body ?? {};
-  validateNewUser(username, password);
+  validateNewUser(username, password, { displayName, email: req.body?.email });
   const { lastInsertRowid } = db
     .prepare(
-      'INSERT INTO users (username, display_name, password_hash, is_admin, created_at) VALUES (?, ?, ?, 1, ?)',
+      'INSERT INTO users (username, display_name, password_hash, is_admin, email, created_at) VALUES (?, ?, ?, 1, ?, ?)',
     )
-    .run(username.trim(), (displayName || username).trim(), hashPassword(password), Date.now());
+    .run(username.trim(), (displayName || username).trim(), hashPassword(password), String(req.body.email).trim(), Date.now());
   createSession(res, Number(lastInsertRowid));
   res.json({ ok: true });
 });
@@ -295,11 +296,13 @@ api.post('/password/reset', (req, res) => {
   const keys = user ? [mfaKey(user.id)] : [];
   assertNotLocked(req, null, keys);
   const { password } = req.body ?? {};
-  if (!password || String(password).length < 8) fail(400, 'New password must be at least 8 characters');
   if (!user || !email.checkEmailCode(user.id, 'reset', req.body?.code)) {
     recordFailure(req, null, keys);
     fail(400, 'That code is not right or has expired. Check the latest email, or send a new code.');
   }
+  // Checked after the code, so this can't be used to probe accounts
+  const weak = passwordProblem(password, { username: user.username, displayName: user.display_name, email: user.email });
+  if (weak) fail(400, weak);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), user.id);
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id); // sign out everywhere else
   recordSuccess(req, user.username);
@@ -466,6 +469,25 @@ api.get('/me', (req, res) => {
   });
 });
 
+// One time: move saved appearances from the old defaults (comfortable width,
+// shaded column, own name hidden) to the new ones (narrow, card, own name shown)
+if (!getSetting('migrated.appearance-defaults-2')) {
+  for (const u of db.prepare('SELECT id, theme FROM users WHERE theme IS NOT NULL').all()) {
+    let t;
+    try {
+      t = JSON.parse(u.theme);
+    } catch {
+      continue;
+    }
+    if (!t || typeof t !== 'object') continue;
+    if (t.convWidth === 'comfortable') t.convWidth = 'narrow';
+    if (t.convStyle === 'tint') t.convStyle = 'card';
+    if (t.labelOwn === false) t.labelOwn = true;
+    db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(t), u.id);
+  }
+  setSetting('migrated.appearance-defaults-2', '1');
+}
+
 // The welcome tour is shown until someone finishes or closes it once
 api.post('/me/tour', (req, res) => {
   db.prepare('UPDATE users SET tour_done_at = ? WHERE id = ?').run(Date.now(), req.user.id);
@@ -496,12 +518,12 @@ api.put('/me/theme', (req, res) => {
       : current.logo,
     iconId: /^[0-9a-f]{16}$/.test(t.iconId ?? '') ? t.iconId : current.iconId,
     // Name tag on your own sent messages (other staff are always tagged)
-    labelOwn: typeof t.labelOwn === 'boolean' ? t.labelOwn : !!current.labelOwn,
+    labelOwn: typeof t.labelOwn === 'boolean' ? t.labelOwn : current.labelOwn ?? true,
     // How wide a conversation's messages can get, and the client details panel beside them
-    convWidth: ['narrow', 'comfortable', 'full'].includes(t.convWidth) ? t.convWidth : current.convWidth ?? 'comfortable',
+    convWidth: ['narrow', 'comfortable', 'full'].includes(t.convWidth) ? t.convWidth : current.convWidth ?? 'narrow',
     clientPanel: typeof t.clientPanel === 'boolean' ? t.clientPanel : current.clientPanel ?? true,
     // How the column stands out from the empty space beside it
-    convStyle: ['plain', 'tint', 'card'].includes(t.convStyle) ? t.convStyle : current.convStyle ?? 'tint',
+    convStyle: ['plain', 'tint', 'card'].includes(t.convStyle) ? t.convStyle : current.convStyle ?? 'card',
   };
   db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(theme), req.user.id);
   res.json(theme);
@@ -527,9 +549,11 @@ api.post('/me/icon', express.json({ limit: '3mb' }), (req, res) => {
 
 api.post('/me/password', (req, res) => {
   const { current, next } = req.body ?? {};
-  const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+  const row = db.prepare('SELECT password_hash, username, display_name, email FROM users WHERE id = ?').get(req.user.id);
   if (!verifyPassword(String(current ?? ''), row.password_hash)) fail(400, 'Current password is wrong');
-  if (!next || String(next).length < 8) fail(400, 'New password must be at least 8 characters');
+  const weak = passwordProblem(next, { username: row.username, displayName: row.display_name, email: row.email });
+  if (weak) fail(400, weak);
+  if (verifyPassword(String(next), row.password_hash)) fail(400, 'Choose a password different from your current one');
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), req.user.id);
   res.json({ ok: true });
 });
@@ -832,11 +856,17 @@ api.use(contactsRouter);
 const admin = express.Router();
 api.use('/admin', requireAdmin, admin);
 
-function validateNewUser(username, password) {
+// New accounts need an email (for password resets and sign-in codes) and a
+// password that passes the rules in passwords.js
+function validateNewUser(username, password, { displayName = '', email: address = '' } = {}) {
   if (!username || !/^[a-zA-Z0-9._@-]{2,64}$/.test(String(username).trim())) {
     fail(400, 'Username must be 2-64 letters, digits, or . _ @ -');
   }
-  if (!password || String(password).length < 8) fail(400, 'Password must be at least 8 characters');
+  const mail = String(address ?? '').trim();
+  if (!mail) fail(400, 'Enter an email address. It\'s used for password resets and sign-in codes.');
+  if (!email.validEmail(mail)) fail(400, 'That email address doesn\'t look right');
+  const weak = passwordProblem(password, { username, displayName, email: mail });
+  if (weak) fail(400, weak);
 }
 
 function userWithNumbers(u) {
@@ -925,7 +955,8 @@ admin.get('/users', (_req, res) => {
 
 admin.post('/users', (req, res) => {
   const { username, password, displayName, isAdmin, numberIds = [] } = req.body ?? {};
-  validateNewUser(username, password);
+  validateNewUser(username, password, { displayName, email: req.body?.email });
+  if (db.prepare("SELECT 1 FROM users WHERE email = ? COLLATE NOCASE").get(String(req.body.email).trim())) fail(409, 'Another user already has that email address');
   if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username.trim())) fail(409, 'That username is taken');
   const { lastInsertRowid } = db
     .prepare(
@@ -958,7 +989,8 @@ admin.patch('/users/:id', (req, res) => {
   if (req.body?.email != null) setUserEmail(id, req.body.email);
   if (displayName != null) db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(String(displayName).trim() || user.username, id);
   if (password) {
-    if (String(password).length < 8) fail(400, 'Password must be at least 8 characters');
+    const weak = passwordProblem(password, { username: user.username, displayName: displayName ?? user.display_name, email: req.body?.email ?? user.email });
+    if (weak) fail(400, weak);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), id);
     db.prepare('DELETE FROM sessions WHERE user_id = ? AND user_id != ?').run(id, req.user.id);
   }

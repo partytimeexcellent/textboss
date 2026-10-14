@@ -696,7 +696,7 @@ a.btn.primary { color: var(--accent-text); }
 .auth { min-height: 100dvh; }
 
 /* Outgoing texts sent by another staff member: tagged with their name and shaded a little differently */
-.msg.out.other .bubble { background: color-mix(in oklab, var(--bubble-out) 80%, var(--text)); }
+.msg.out.other .bubble { background: color-mix(in oklab, var(--bubble-out) 66%, var(--text)); }
 .msg.out .sender { text-align: right; }
 .auth-links { display: grid; justify-items: center; gap: 10px; text-align: center; }
 .code-section[hidden] { display: none; }

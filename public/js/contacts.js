@@ -382,7 +382,7 @@ async function renderContact(id, query) {
               renderContact(id);
             } }, 'Show this name for the number')))),
     c.blocked && h('p', { class: 'hint bad' }, 'Texts from this number are blocked. ',
-      h('button', { type: 'button', class: 'link-btn', onclick: async () => {
+      state.me.isAdmin && h('button', { type: 'button', class: 'link-btn', onclick: async () => {
         await api(`/phones/${c.phone}/block`, { method: 'PUT', body: { blocked: false } });
         toast('Unblocked');
         renderContact(id);

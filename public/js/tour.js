@@ -115,8 +115,8 @@ function steps(actions) {
       title: 'A conversation',
       body: [
         isPhone()
-          ? 'Up top: the client\'s contact card, and ⋮ to pin, flag, mark as unread, archive, opt out or block a sender. The arrow takes you back to the list.'
-          : 'Up top: pin, flag, the client\'s contact card, and ⋮ for more, like mark as unread, archive, opt out or block a sender.',
+          ? `Up top: the client's contact card, and ⋮ to pin, flag, mark as unread, archive or opt out${admin ? ', or block a sender' : ''}. The arrow takes you back to the list.`
+          : `Up top: pin, flag, the client's contact card, and ⋮ for more, like mark as unread, archive or opt out${admin ? ', or block a sender' : ''}.`,
         admin ? 'As an admin you can also delete a conversation\'s history from ⋮.' : null,
       ],
     },

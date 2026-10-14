@@ -294,8 +294,9 @@ async function renderUsers() {
     [
       !u && h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'off' })),
       h('label', {}, 'Display name', h('input', { type: 'text', name: 'displayName', value: u?.displayName ?? '' })),
-      h('label', {}, 'Email (for password resets and emailed sign-in codes)', h('input', { type: 'email', name: 'email', value: u?.email ?? '', autocomplete: 'off' })),
-      h('label', {}, u ? 'New password (leave blank to keep)' : 'Password (8+ characters)', h('input', { type: 'password', name: 'password', required: !u, minLength: 8, autocomplete: 'new-password' })),
+      h('label', {}, u ? 'Email (for password resets and emailed sign-in codes)' : 'Email (required: for password resets and sign-in codes)', h('input', { type: 'email', name: 'email', value: u?.email ?? '', required: !u, autocomplete: 'off' })),
+      h('label', {}, u ? 'New password (leave blank to keep)' : 'Password', h('input', { type: 'password', name: 'password', required: !u, minLength: 10, autocomplete: 'new-password' })),
+      h('p', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'isAdmin', checked: !!u?.isAdmin }), 'Admin: sees every number and can change these settings'),
       h('div', { class: 'field-label' }, 'Numbers this user can use'), numberChecks(u?.numberIds),
     ],

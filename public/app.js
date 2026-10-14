@@ -76,7 +76,9 @@ async function renderAuth() {
     ? [
         h('label', {}, 'Your name', h('input', { type: 'text', name: 'displayName', autocomplete: 'name' })),
         h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'username' })),
-        h('label', {}, 'Password (8+ characters)', h('input', { type: 'password', name: 'password', required: true, minLength: 8, autocomplete: 'new-password' })),
+        h('label', {}, 'Email (for password resets)', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'email' })),
+        h('label', {}, 'Password', h('input', { type: 'password', name: 'password', required: true, minLength: 10, autocomplete: 'new-password' }),
+          h('span', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.')),
       ]
     : [
         h('label', {}, 'Username', h('input', { type: 'text', name: 'username', required: true, autocomplete: 'username webauthn' })),
@@ -245,7 +247,7 @@ function renderForgot(logo, login = '') {
 function renderResetCode(logo, login) {
   const error = h('div', { class: 'form-error' });
   const code = h('input', { type: 'text', name: 'code', required: true, inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '123 456', class: 'code-input' });
-  const pw = h('input', { type: 'password', name: 'password', required: true, minLength: 8, autocomplete: 'new-password' });
+  const pw = h('input', { type: 'password', name: 'password', required: true, minLength: 10, autocomplete: 'new-password' });
   const form = h('form', {
     onsubmit: async (e) => {
       e.preventDefault();
@@ -263,7 +265,7 @@ function renderResetCode(logo, login) {
     h('p', {}, 'Check your email'),
     h('p', { class: 'hint' }, 'If that account has an email address, a 6-digit code is on its way. It can take a minute; check spam too. No email? Your administrator can reset your password.'),
     h('label', {}, 'Code from the email', code),
-    h('label', {}, 'New password (8+ characters)', pw),
+    h('label', {}, 'New password', pw, h('span', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.')),
     error,
     h('button', { class: 'btn primary', type: 'submit' }, 'Change password and sign in'),
     h('div', { class: 'auth-links' },
@@ -440,7 +442,8 @@ function changePasswordDialog() {
     'Change password',
     [
       h('label', {}, 'Current password', h('input', { type: 'password', name: 'current', required: true, autocomplete: 'current-password' })),
-      h('label', {}, 'New password (8+ characters)', h('input', { type: 'password', name: 'next', required: true, minLength: 8, autocomplete: 'new-password' })),
+      h('label', {}, 'New password', h('input', { type: 'password', name: 'next', required: true, minLength: 10, autocomplete: 'new-password' })),
+      h('p', { class: 'hint' }, 'At least 10 characters, not a common password, and not your name. A few unrelated words work well.'),
     ],
     'Save',
     async (data) => {
@@ -1216,7 +1219,7 @@ function paneMenu(p, anchor) {
       await api(`/phones/${single}/opt-out`, { method: 'PUT', body: { optedOut: !optedOut } });
       toast(optedOut ? 'Opted back in' : 'Marked as opted out');
     }],
-    single && [blocked ? 'Unblock sender' : 'Block sender', async () => {
+    single && state.me.isAdmin && [blocked ? 'Unblock sender' : 'Block sender', async () => {
       if (!blocked && !(await confirmDialog('Block this sender?', `Texts from ${nameFor(single)} will be dropped and won't appear in TextBoss. You can unblock them later from this menu or Admin settings.`, 'Block', { danger: true }))) return;
       await api(`/phones/${single}/block`, { method: 'PUT', body: { blocked: !blocked } });
       toast(blocked ? 'Unblocked' : 'Blocked');

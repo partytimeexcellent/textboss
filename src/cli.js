@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { db } from './db.js';
 import { hashPassword } from './auth.js';
 import { resetMfa, mfaStatus } from './mfa.js';
+import { passwordProblem } from './passwords.js';
 
 const [command, username, password] = process.argv.slice(2);
 
@@ -40,9 +41,10 @@ switch (command) {
   }
   case 'reset-password': {
     const user = findUser(username);
-    const next = password || crypto.randomBytes(9).toString('base64url');
-    if (next.length < 8) {
-      console.error('Passwords must be at least 8 characters.');
+    const next = password || crypto.randomBytes(12).toString('base64url');
+    const weak = password && passwordProblem(password, { username: user.username, displayName: user.display_name, email: user.email ?? '' });
+    if (weak) {
+      console.error(`${weak}.`);
       process.exit(1);
     }
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), user.id);

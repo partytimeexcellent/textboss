@@ -15,7 +15,7 @@ export const PRESETS = [
   { id: 'slate', name: 'Slate', accent: '#475569', highlight: '#0ea5e9' },
   { id: 'rose', name: 'Rose', accent: '#d6336c', highlight: '#7048e8' },
 ];
-export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO, convWidth: 'comfortable', clientPanel: true, convStyle: 'tint' };
+export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO, convWidth: 'narrow', clientPanel: true, convStyle: 'card', labelOwn: true };
 
 // Widest a conversation's messages and composer get before they're centered
 const CONV_WIDTHS = { narrow: '520px', comfortable: '620px', full: '100000px' };
@@ -46,7 +46,7 @@ export function applyTheme(theme) {
   else root.dataset.mode = t.mode;
   root.style.setProperty('--conv-max', CONV_WIDTHS[t.convWidth] ?? CONV_WIDTHS.comfortable);
   root.classList.toggle('no-client-panel', t.clientPanel === false);
-  for (const w of ['narrow', 'comfortable', 'full']) root.classList.toggle(`conv-${w}`, (t.convWidth ?? 'comfortable') === w);
+  for (const w of ['narrow', 'comfortable', 'full']) root.classList.toggle(`conv-${w}`, (t.convWidth ?? 'narrow') === w);
   for (const st of ['tint', 'card']) root.classList.toggle(`conv-${st}`, t.convStyle === st);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.accent);
   applyLogo(t.logo, t.iconId);
@@ -167,11 +167,11 @@ export function themePicker(currentTheme, onSaved = () => {}) {
   clientPanel.addEventListener('change', () => update({ clientPanel: clientPanel.checked }));
   const widths = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Conversation width' });
   const drawWidths = () => widths.replaceChildren(...[['narrow', 'Narrow'], ['comfortable', 'Comfortable'], ['full', 'Full width']].map(([v, label]) =>
-    h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convWidth ?? 'comfortable') === v), class: (t.convWidth ?? 'comfortable') === v ? 'on' : '', onclick: () => { update({ convWidth: v }); drawWidths(); } }, label)));
+    h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convWidth ?? 'narrow') === v), class: (t.convWidth ?? 'narrow') === v ? 'on' : '', onclick: () => { update({ convWidth: v }); drawWidths(); } }, label)));
   drawWidths();
   const styles = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Conversation background' });
   const drawStyles = () => styles.replaceChildren(...[['plain', 'Plain'], ['tint', 'Shaded column'], ['card', 'Card']].map(([v, label]) =>
-    h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convStyle ?? 'tint') === v), class: (t.convStyle ?? 'tint') === v ? 'on' : '', onclick: () => { update({ convStyle: v }); drawStyles(); } }, label)));
+    h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convStyle ?? 'card') === v), class: (t.convStyle ?? 'card') === v ? 'on' : '', onclick: () => { update({ convStyle: v }); drawStyles(); } }, label)));
   drawStyles();
   const ownName = h('div', { class: 'sender' }, 'You');
   const syncOwnName = () => { ownName.hidden = !t.labelOwn; };
