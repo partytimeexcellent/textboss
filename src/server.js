@@ -34,7 +34,7 @@ import { fail } from './http.js';
 import { securityHeaders, assertNotLocked, recordFailure, recordSuccess, mfaKey } from './security.js';
 import * as mfa from './mfa.js';
 import {
-  parseContactFile, upsertContacts, logImport, idleDays, idleCandidates, inactivateIdle, autoInactivateMissing, startIdleJob,
+  parseContactFile, upsertContacts, logImport, fullName as contactFullName, idleDays, idleCandidates, inactivateIdle, autoInactivateMissing, startIdleJob,
 } from './contacts.js';
 import { router as contactsRouter } from './routes/contacts.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
@@ -42,6 +42,7 @@ import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
 import * as email from './email.js';
 import { getHours, saveHours, hoursStatus } from './hours.js';
+import { showMfaBanner, snoozeMfaBanner, remindersOn, setRemindersOn, startReminderJob } from './reminders.js';
 import { vapidPublicKey, saveSubscription, removeSubscription, subscriptionStatus, setPaused, pushToUsers, unreadTotal } from './push.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -430,6 +431,12 @@ api.post('/me/passkeys/:id/remove', (req, res) => {
   res.json({ ok: true });
 });
 
+// "Remind me tomorrow" on the set-up-two-factor banner
+api.post('/me/security/snooze', (req, res) => {
+  snoozeMfaBanner(req.user.id);
+  res.json({ ok: true });
+});
+
 // Sign out everywhere except this browser
 api.post('/me/sessions/revoke-others', (req, res) => {
   const { changes } = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, sessionToken(req));
@@ -453,7 +460,7 @@ api.get('/me', (req, res) => {
     numbers,
     mockMode: isMockMode(),
     provider: activeProvider(),
-    security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled },
+    security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled, remind: showMfaBanner(req.user.id) },
     tourDone: !!db.prepare('SELECT tour_done_at FROM users WHERE id = ?').get(req.user.id).tour_done_at,
     theme: JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? 'null'),
   });
@@ -847,7 +854,7 @@ admin.post('/users/:id/reset-2fa', (req, res) => {
   res.json({ ok: true });
 });
 
-admin.get('/security', (_req, res) => res.json({ require2fa: mfa.mfaRequired() }));
+admin.get('/security', (_req, res) => res.json({ require2fa: mfa.mfaRequired(), remind2fa: remindersOn() }));
 
 // ----- Office hours -----
 
@@ -895,12 +902,16 @@ admin.post('/email/test', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Only the fields sent are changed
 admin.put('/security', (req, res) => {
-  if (req.body?.require2fa && !mfa.mfaStatus(req.user.id).enabled) {
-    fail(400, 'Set up two-factor sign-in on your own account first (⋮ → Security), so you are not locked out.');
+  if ('require2fa' in (req.body ?? {})) {
+    if (req.body.require2fa && !mfa.mfaStatus(req.user.id).enabled) {
+      fail(400, 'Set up two-factor sign-in on your own account first (⋮ → Security), so you are not locked out.');
+    }
+    setSetting('security.require2fa', req.body.require2fa ? '1' : null);
   }
-  setSetting('security.require2fa', req.body?.require2fa ? '1' : null);
-  res.json({ require2fa: mfa.mfaRequired() });
+  if ('remind2fa' in (req.body ?? {})) setRemindersOn(!!req.body.remind2fa);
+  res.json({ require2fa: mfa.mfaRequired(), remind2fa: remindersOn() });
 });
 
 admin.get('/users', (_req, res) => {
@@ -1149,7 +1160,7 @@ admin.get('/imports/:id/missing', (req, res) => {
       WHERE inactive_at IS NULL AND id IN (${chunk.map(() => '?').join(',')})`).all(...chunk));
   }
   found.sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name));
-  res.json(found.map((r) => ({ id: r.id, name: [r.nickname && `(${r.nickname})`, r.first_name, r.last_name].filter(Boolean).join(' '), patientId: r.patient_id, phone: r.phone })));
+  res.json(found.map((r) => ({ id: r.id, name: contactFullName(r) || '(no name)', patientId: r.patient_id, phone: r.phone })));
 });
 
 // Inactive contacts: idle timer and automatic folder-import clean-up
@@ -1225,6 +1236,7 @@ app.use((err, _req, res, _next) => {
 resumeBroadcasts();
 startWatcher();
 startIdleJob();
+startReminderJob();
 cleanUpStoredReceipts();
 
 app.listen(config.port, () => {

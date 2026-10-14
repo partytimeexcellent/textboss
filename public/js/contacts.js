@@ -351,7 +351,7 @@ async function renderContact(id, query) {
     h('div', { class: 'form-grid' },
       field('First name', 'firstName', { autocomplete: 'off' }),
       field('Last name', 'lastName', { autocomplete: 'off' }),
-      field('Nickname', 'nickname', { autocomplete: 'off', placeholder: 'Shown as (Nickname) First Last' }),
+      field('Nickname', 'nickname', { autocomplete: 'off', placeholder: 'Shown as "Nickname" First Last' }),
       h('div'),
       field('Mobile phone', 'phone', { type: 'tel', value: c.phone ? formatPhone(c.phone) : '' }),
       field('Date of birth', 'dob', { type: 'date' }),

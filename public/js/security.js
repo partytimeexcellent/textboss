@@ -34,6 +34,7 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
   }
   const redraw = () => renderSecurity(container, { forced, onEnabled });
   const afterFirstMethod = () => {
+    window.dispatchEvent(new Event('tb:mfa-enabled')); // hides the reminder banner
     if (forced && onEnabled) onEnabled();
     else redraw();
   };

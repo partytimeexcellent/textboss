@@ -55,11 +55,11 @@ export function getContact(id) {
   return row ? serializeContact(row) : null;
 }
 
-// "(Bobby) Robert Smith" when a nickname is set
+// '"Bobby" Robert Smith' when a nickname is set
 export const fullName = (c) => {
   const nick = c.nickname ?? '';
   const name = [c.firstName ?? c.first_name, c.lastName ?? c.last_name].filter(Boolean).join(' ');
-  return nick ? `(${nick}) ${name}`.trim() : name;
+  return nick ? `"${nick}" ${name}`.trim() : name;
 };
 
 // Accepts YYYY-MM-DD, MM/DD/YYYY, M/D/YY, Excel serials and Date objects.

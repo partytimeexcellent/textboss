@@ -202,10 +202,10 @@ export function nameFor(phone) {
 }
 
 export const conversationName = (participants) => participants.map(nameFor).join(', ');
-// "(Bobby) Robert Smith" when a nickname is set
+// '"Bobby" Robert Smith' when a nickname is set
 export const fullName = (c) => {
   const name = [c.firstName, c.lastName].filter(Boolean).join(' ');
-  return (c.nickname ? `(${c.nickname}) ${name}`.trim() : name) || '(no name)';
+  return (c.nickname ? `"${c.nickname}" ${name}`.trim() : name) || '(no name)';
 };
 
 export function numberLabel(numberId) {
@@ -226,7 +226,7 @@ export function avatar(seed, label) {
 }
 
 export function initials(name) {
-  const plain = String(name ?? '').replace(/^\([^)]*\)\s*/, ''); // ignore a leading (nickname)
+  const plain = String(name ?? '').replace(/^("[^"]*"|\([^)]*\))\s*/, ''); // ignore a leading "nickname"
   return plain && !/^[\d(+]/.test(plain) ? plain.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() : '#';
 }
 

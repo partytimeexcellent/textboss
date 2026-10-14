@@ -314,6 +314,24 @@ function runTour() {
   });
 }
 
+// Nudge to set up two-factor sign-in; "Remind me tomorrow" snoozes it everywhere for a day
+function mfaBanner() {
+  const el = h('div', { class: 'nag-banner', role: 'note' },
+    icon('shield'),
+    h('div', {},
+      h('strong', {}, 'Protect your account. '),
+      'Add a passkey or authenticator app so client messages stay safe even if your password leaks.',
+      h('div', { class: 'nag-actions' },
+        h('a', { class: 'btn primary', href: '#/security' }, 'Set up'),
+        h('button', { type: 'button', class: 'link-btn', onclick: async () => {
+          el.remove();
+          state.security.remind = false;
+          await api('/me/security/snooze', { method: 'POST' }).catch(() => {});
+        } }, 'Remind me tomorrow'))));
+  window.addEventListener('tb:mfa-enabled', () => el.remove(), { once: true });
+  return el;
+}
+
 // ---------- Shell ----------
 
 function renderShell() {
@@ -337,6 +355,7 @@ function renderShell() {
         h('button', { class: 'icon-btn', title: 'Menu', onclick: (e) => openUserMenu(e.currentTarget) }, icon('menu'))),
       els.tabs,
       state.mockMode && h('div', { class: 'mock-banner' }, 'Mock mode: messages are not really sent.'),
+      state.security?.remind && mfaBanner(),
       els.sideBody,
     ),
     els.main,

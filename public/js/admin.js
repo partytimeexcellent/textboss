@@ -3,7 +3,7 @@
 
 import {
   h, fill, icon, state, els, route, api, toast, formatPhone, numberLabel, dialog, confirmDialog,
-  paneHead, relTime, formatDob,
+  paneHead, relTime, formatDob, fullName,
 } from './core.js';
 
 const TABS = [
@@ -354,6 +354,18 @@ function securityPolicyCard(security, users) {
     h('label', { class: 'switch-label' }, toggle,
       h('span', {}, h('strong', {}, 'Require two-factor sign-in for everyone'),
         h('span', { class: 'hint' }, ' — people without it are taken through setup the next time they use TextBoss.'))),
+    !security.require2fa && h('label', { class: 'switch-label' },
+      h('input', { type: 'checkbox', class: 'switch', checked: security.remind2fa, onchange: async (e) => {
+        try {
+          await api('/admin/security', { method: 'PUT', body: { remind2fa: e.target.checked } });
+          toast(e.target.checked ? 'Reminders are on' : 'Reminders are off');
+        } catch (err) {
+          e.target.checked = !e.target.checked;
+          toast(err.message);
+        }
+      } }),
+      h('span', {}, h('strong', {}, 'Remind people who haven\'t set it up'),
+        h('span', { class: 'hint' }, ' — a banner in the app they can snooze for a day, and a daily email if they have an email address (Admin settings → Email). Starts a day after their account is created.'))),
     missing.length > 0 && h('p', { class: 'hint' }, `Not set up yet: ${missing.map((u) => u.displayName).join(', ')}.`),
     h('p', { class: 'hint' }, 'Someone without their phone or key can get an emailed code instead, if their email is saved and email is set up (Admin settings → Email). Otherwise use Reset 2FA next to their name. Failed sign-ins lock that username for 15 minutes after 8 wrong passwords or 6 wrong codes.'));
 }
@@ -911,7 +923,7 @@ async function inactiveCard() {
             const box = h('input', { type: 'checkbox', checked: selected.has(c.id), onchange: () => { box.checked ? selected.add(c.id) : selected.delete(c.id); drawBar(); } });
             return h('tr', {},
               h('td', {}, box),
-              h('td', { class: 'strong nowrap' }, h('a', { href: `#/contacts/${c.id}` }, [c.nickname && `(${c.nickname})`, c.firstName, c.lastName].filter(Boolean).join(' ') || '(no name)')),
+              h('td', { class: 'strong nowrap' }, h('a', { href: `#/contacts/${c.id}` }, fullName(c))),
               h('td', {}, c.patientId), h('td', { class: 'nowrap' }, c.phone ? formatPhone(c.phone) : ''),
               h('td', {}, REASONS[c.inactiveReason] ?? ''), h('td', { class: 'nowrap' }, relTime(c.inactiveAt)));
           })))),

@@ -769,3 +769,9 @@ a.btn.primary { color: var(--accent-text); }
 .shared-phone > span:first-child { flex: none; margin-top: 2px; color: var(--text-muted); }
 .shared-phone svg { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--text-muted); }
 dialog.wide.xl { width: min(920px, calc(100vw - 32px)); }
+/* "Set up two-factor" reminder in the sidebar */
+.nag-banner { display: flex; gap: 10px; margin: 0 12px 6px; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.4;
+  background: color-mix(in srgb, var(--brand) 14%, var(--bg-side)); border: 1px solid color-mix(in srgb, var(--brand) 35%, transparent); }
+.nag-banner svg { width: 20px; height: 20px; flex: none; color: var(--brand); margin-top: 1px; }
+.nag-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.nag-actions .btn { padding: 5px 12px; text-decoration: none; }
