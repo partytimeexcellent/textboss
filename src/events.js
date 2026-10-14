@@ -16,7 +16,8 @@ export function subscribe(req, res) {
   if (!clients.has(userId)) clients.set(userId, new Set());
   clients.get(userId).add(res);
 
-  const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
+  // A real event (not a comment) so the browser can tell the stream is still alive
+  const ping = setInterval(() => res.write('event: ping\ndata: {}\n\n'), 25_000);
   req.on('close', () => {
     clearInterval(ping);
     clients.get(userId)?.delete(res);

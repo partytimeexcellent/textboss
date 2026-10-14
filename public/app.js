@@ -382,6 +382,7 @@ function openUserMenu(anchor) {
     })],
     ['Security', () => (location.hash = '#/security')],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
+    ['Refresh', () => location.reload()],
     ['Notifications', async () => (await notificationsDialog()).addEventListener('close', refreshBell)],
     ['Change password', changePasswordDialog],
     ['Sign out', async () => {
@@ -427,10 +428,59 @@ setInterval(checkForUpdate, 15 * 60_000);
 
 // ---------- Live updates ----------
 
+// Phones freeze a backgrounded app's connection, and proxies can drop idle
+// ones without the browser noticing. The server pings every 25s; if nothing
+// arrives for longer than that, reconnect. Every (re)connect, and coming back
+// to the app, re-fetches what's on screen so nothing missed stays missing.
+const STALE_MS = 65_000;
+let lastEventAt = Date.now();
+
+function reconnectEvents() {
+  state.events?.close();
+  state.events = null;
+  connectEvents();
+}
+
+setInterval(() => {
+  if (state.events && Date.now() - lastEventAt > STALE_MS) reconnectEvents();
+}, 15_000);
+
+function onReturn() {
+  if (!state.me || !state.events) return;
+  if (Date.now() - lastEventAt > 30_000 || state.events.readyState !== EventSource.OPEN) reconnectEvents();
+  else catchUp();
+}
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && onReturn());
+window.addEventListener('online', onReturn);
+window.addEventListener('pageshow', (e) => e.persisted && onReturn());
+
+// Re-load the conversation list and the newest messages of every open pane
+let catchUpTimer;
+function catchUp() {
+  clearTimeout(catchUpTimer);
+  catchUpTimer = setTimeout(async () => {
+    loadConversations();
+    await Promise.all([...panes.values()].filter((p) => p.conv).map(async (p) => {
+      const latest = await api(`/conversations/${p.id}/messages`).catch(() => null);
+      if (!latest) return;
+      const byId = new Map(p.messages.map((m) => [m.id, m]));
+      for (const m of latest) byId.set(m.id, m);
+      // Anything older than the fetched page that vanished was deleted
+      const oldest = latest[0]?.id ?? Infinity;
+      p.messages = [...byId.values()].filter((m) => m.id < oldest || latest.some((l) => l.id === m.id)).sort((a, b) => a.id - b.id);
+      renderPaneMessages(p);
+      if (p.visible && document.visibilityState === 'visible') markRead(p.id);
+    }));
+  }, 150);
+}
+
 function connectEvents() {
   if (state.events) return;
   const es = new EventSource('/api/events');
   state.events = es;
+  lastEventAt = Date.now();
+  const alive = () => (lastEventAt = Date.now());
+  for (const type of ['ping', 'message', 'read', 'contacts', 'canned', 'numbers', 'broadcast']) es.addEventListener(type, alive);
   es.addEventListener('message', (e) => onMessageEvent(JSON.parse(e.data)));
   es.addEventListener('read', () => scheduleListReload());
   es.addEventListener('contacts', async () => {
@@ -450,7 +500,8 @@ function connectEvents() {
   });
   es.addEventListener('broadcast', (e) => onBroadcastEvent(JSON.parse(e.data)));
   es.addEventListener('open', () => {
-    scheduleListReload();
+    alive();
+    catchUp();
     checkForUpdate();
   });
 }
