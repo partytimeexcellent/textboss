@@ -3,7 +3,7 @@
 import {
   h, fill, icon, autoFocus, state, els, route, api, setUnauthorizedHandler, setSetupRequiredHandler, loadIndex, loadCanned, loadLists,
   toast, formatPhone, fullName, nameFor, conversationName, numberLabel, numberOptions, conversationAvatar,
-  relTime, store, dialog, confirmDialog, confirmOptOutDialog, openMenu, backButton, buildComposer,
+  relTime, store, dialog, confirmDialog, confirmOptOutDialog, openMenu, backButton, buildComposer, avatar, initials, formatDob,
 } from './js/core.js';
 import { renderContactsSidebar, renderContactsMain, refreshContacts, onBroadcastEvent } from './js/contacts.js';
 import { renderCanned } from './js/canned.js';
@@ -1001,12 +1001,14 @@ function createPane(id) {
     renderPaneMessages(p, true);
   }, { mergeContact });
 
+  // Beside the messages on wide panes: the client's details (see renderClientPanel)
+  p.side = h('aside', { class: 'client-panel', 'aria-label': 'Client details' });
   p.el = h('section', {
     class: 'pane',
     'aria-label': 'Conversation',
     onmousedown: () => focusPane(id),
     onfocusin: () => focusPane(id),
-  }, p.head, p.list, p.banner, p.composer);
+  }, p.head, h('div', { class: 'pane-body' }, h('div', { class: 'pane-main' }, p.list, p.banner, p.composer), p.side));
 
   (async () => {
     try {
@@ -1061,6 +1063,12 @@ function renderPaneChrome(p) {
       title: shared ? 'Contacts at this number' : state.names[single] ? 'View contact' : 'Add contact',
       onclick: (e) => openContactFor(single, e.currentTarget),
     }, icon('user')),
+    h('button', {
+      class: 'icon-btn panel-toggle',
+      title: state.theme?.clientPanel === false ? 'Show client details' : 'Hide client details',
+      'aria-pressed': String(state.theme?.clientPanel !== false),
+      onclick: toggleClientPanel,
+    }, icon('sidepanel')),
     h('button', { class: 'icon-btn', title: 'More', onclick: (e) => paneMenu(p, e.currentTarget) }, icon('menu')),
     multi && h('button', { class: 'icon-btn pane-close', title: 'Close this pane', onclick: () => closePane(p.id) }, icon('close')),
   );
@@ -1068,6 +1076,90 @@ function renderPaneChrome(p) {
   p.banner.hidden = !optedOut.length;
   fill(p.banner, icon('warning'),
     h('span', {}, `${optedOut.map(nameFor).join(', ')} opted out of texts. Sending will ask you to confirm.`));
+  renderClientPanel(p);
+}
+
+// ----- Client details panel -----
+
+// Remembered per person, like the rest of Appearance
+async function toggleClientPanel() {
+  const show = state.theme?.clientPanel === false;
+  state.theme = applyTheme({ ...state.theme, clientPanel: show });
+  for (const p of panes.values()) renderPaneChrome(p);
+  try {
+    state.theme = applyTheme(await api('/me/theme', { method: 'PUT', body: state.theme }));
+  } catch {}
+}
+
+const ageFrom = (dob) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob ?? '');
+  if (!m) return null;
+  const now = new Date();
+  let age = now.getFullYear() - Number(m[1]);
+  if (now.getMonth() + 1 < Number(m[2]) || (now.getMonth() + 1 === Number(m[2]) && now.getDate() < Number(m[3]))) age--;
+  return age >= 0 && age < 130 ? age : null;
+};
+
+async function contactsForPhone(phone) {
+  const { contacts } = await api(`/contacts?q=${phone}&limit=20&status=all`);
+  const matches = contacts.filter((c) => c.phone === phone).slice(0, 5);
+  return Promise.all(matches.map((c) => api(`/contacts/${c.id}`).catch(() => c)));
+}
+
+function clientCard(c) {
+  const age = ageFrom(c.dob);
+  const row = (label, value) => value && h('div', { class: 'cp-row' }, h('span', { class: 'cp-label' }, label), h('span', { class: 'cp-value' }, value));
+  return h('div', { class: 'cp-card' },
+    h('div', { class: 'cp-head' },
+      avatar(`c${c.id}`, initials(fullName(c))),
+      h('div', { class: 'cp-name' },
+        h('a', { href: `#/contacts/${c.id}` }, fullName(c)),
+        h('div', { class: 'cp-tags' },
+          c.optedOut && h('span', { class: 'tag warn' }, 'Opted out'),
+          c.blocked && h('span', { class: 'tag' }, 'Blocked'),
+          c.inactiveAt && h('span', { class: 'tag' }, 'Inactive')))),
+    row('Phone', c.phone && formatPhone(c.phone)),
+    row('Born', c.dob && `${formatDob(c.dob)}${age != null ? ` (${age})` : ''}`),
+    row('Client ID', c.patientId),
+    row('Email', c.email && h('a', { href: `mailto:${c.email}` }, c.email)),
+    c.lists?.length > 0 && row('Lists', h('span', { class: 'cp-chips' }, c.lists.map((l) => h('span', { class: 'chip' }, l.name)))),
+    c.notes
+      ? h('div', { class: 'cp-notes' }, h('div', { class: 'cp-label' }, 'Notes'), h('div', { class: 'cp-notes-text' }, c.notes))
+      : h('div', { class: 'cp-notes hint' }, 'No notes yet.'),
+    h('div', { class: 'cp-actions' }, h('a', { class: 'btn', href: `#/contacts/${c.id}` }, 'Edit contact')));
+}
+
+let panelSeq = 0;
+// Only wide windows can show the panel; fill it in when one gets wide
+const wideEnough = matchMedia('(min-width: 1000px)');
+wideEnough.addEventListener('change', () => wideEnough.matches && renderThreadChrome());
+
+async function renderClientPanel(p) {
+  if (!p.conv || state.theme?.clientPanel === false || !wideEnough.matches || !p.el.isConnected) return;
+  const seq = ++panelSeq;
+  p.panelSeq = seq;
+  const phones = p.conv.participants.slice(0, 10);
+  let groups;
+  try {
+    groups = await Promise.all(phones.map(async (phone) => ({ phone, contacts: await contactsForPhone(phone) })));
+  } catch (err) {
+    fill(p.side, h('p', { class: 'hint' }, err.message));
+    return;
+  }
+  if (p.panelSeq !== seq) return; // a newer render started meanwhile
+  const group = phones.length > 1;
+  fill(p.side,
+    h('div', { class: 'cp-title' }, group ? `${phones.length} people in this group` : 'Client details'),
+    groups.map(({ phone, contacts }) => contacts.length
+      ? [
+          group && h('div', { class: 'cp-phone' }, formatPhone(phone)),
+          !group && contacts.length > 1 && h('p', { class: 'hint' }, `${contacts.length} contacts share this number.`),
+          contacts.map(clientCard),
+        ]
+      : h('div', { class: 'cp-card' },
+          h('div', { class: 'cp-phone' }, formatPhone(phone)),
+          h('p', { class: 'hint' }, 'Not in your contacts.'),
+          h('div', { class: 'cp-actions' }, h('a', { class: 'btn', href: `#/contacts/new?phone=${phone}` }, 'Add contact')))));
 }
 
 function renderThreadChrome() {

@@ -775,3 +775,40 @@ dialog.wide.xl { width: min(920px, calc(100vw - 32px)); }
 .nag-banner svg { width: 20px; height: 20px; flex: none; color: var(--brand); margin-top: 1px; }
 .nag-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
 .nag-actions .btn { padding: 5px 12px; text-decoration: none; }
+
+/* ---------- Conversation column and client details panel ---------- */
+/* Messages and composer stay in a readable column (Appearance → conversation width) */
+.pane { container-type: inline-size; }
+.pane-body { flex: 1; min-height: 0; display: flex; }
+.pane-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.pane .messages { padding-inline: max(16px, calc((100% - var(--conv-max, 760px)) / 2)); }
+.pane .composer { padding-inline: max(12px, calc((100% - var(--conv-max, 760px)) / 2)); }
+.pane .optout-banner { margin-inline: max(12px, calc((100% - var(--conv-max, 760px)) / 2)); }
+
+.client-panel { display: none; width: 300px; flex: none; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg-side); padding: 14px; }
+.panel-toggle { display: none; }
+@container (min-width: 1000px) {
+  .client-panel { display: block; }
+  .panel-toggle { display: inline-flex; }
+}
+.no-client-panel .client-panel { display: none !important; }
+.panel-toggle[aria-pressed="true"] { color: var(--accent); }
+
+.cp-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 10px; }
+.cp-card { display: grid; gap: 8px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.cp-card:last-child { border-bottom: 0; }
+.cp-head { display: flex; gap: 10px; align-items: center; }
+.cp-head .avatar { width: 40px; height: 40px; font-size: 14px; flex: none; }
+.cp-name { min-width: 0; display: grid; gap: 4px; }
+.cp-name > a { font-weight: 700; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+.cp-name > a:hover { text-decoration: underline; }
+.cp-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.cp-tags:empty { display: none; }
+.cp-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; font-size: 13.5px; }
+.cp-label { color: var(--text-muted); font-size: 12.5px; }
+.cp-value { min-width: 0; overflow-wrap: anywhere; }
+.cp-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cp-notes { font-size: 13.5px; display: grid; gap: 4px; }
+.cp-notes-text { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; max-height: 220px; overflow-y: auto; }
+.cp-phone { font-weight: 600; font-size: 13.5px; }
+.cp-actions .btn { padding: 5px 12px; font-size: 13px; text-decoration: none; }

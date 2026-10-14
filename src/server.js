@@ -472,7 +472,7 @@ api.post('/me/tour', (req, res) => {
   res.json({ ok: true });
 });
 
-// Appearance: { preset, accent, highlight, mode, logo, labelOwn } chosen in the theme picker
+// Appearance: { preset, accent, highlight, mode, logo, labelOwn, convWidth, clientPanel } chosen in the theme picker
 api.put('/me/theme', (req, res) => {
   const t = req.body ?? {};
   const color = (v) => (/^#[0-9a-f]{6}$/i.test(v ?? '') ? v : undefined);
@@ -497,6 +497,9 @@ api.put('/me/theme', (req, res) => {
     iconId: /^[0-9a-f]{16}$/.test(t.iconId ?? '') ? t.iconId : current.iconId,
     // Name tag on your own sent messages (other staff are always tagged)
     labelOwn: typeof t.labelOwn === 'boolean' ? t.labelOwn : !!current.labelOwn,
+    // How wide a conversation's messages can get, and the client details panel beside them
+    convWidth: ['narrow', 'comfortable', 'full'].includes(t.convWidth) ? t.convWidth : current.convWidth ?? 'comfortable',
+    clientPanel: typeof t.clientPanel === 'boolean' ? t.clientPanel : current.clientPanel ?? true,
   };
   db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(theme), req.user.id);
   res.json(theme);

@@ -15,7 +15,10 @@ export const PRESETS = [
   { id: 'slate', name: 'Slate', accent: '#475569', highlight: '#0ea5e9' },
   { id: 'rose', name: 'Rose', accent: '#d6336c', highlight: '#7048e8' },
 ];
-export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO };
+export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO, convWidth: 'comfortable', clientPanel: true };
+
+// Widest a conversation's messages and composer get before they're centered
+const CONV_WIDTHS = { narrow: '620px', comfortable: '760px', full: '100000px' };
 
 let current = DEFAULT_THEME;
 export const currentLogo = () => normalizeLogo(current.logo);
@@ -41,6 +44,8 @@ export function applyTheme(theme) {
   root.style.setProperty('--brand-2-text', textOn(t.highlight));
   if (t.mode === 'auto') delete root.dataset.mode;
   else root.dataset.mode = t.mode;
+  root.style.setProperty('--conv-max', CONV_WIDTHS[t.convWidth] ?? CONV_WIDTHS.comfortable);
+  root.classList.toggle('no-client-panel', t.clientPanel === false);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.accent);
   applyLogo(t.logo, t.iconId);
   store('tb.theme', JSON.stringify(t));
@@ -156,6 +161,12 @@ export function themePicker(currentTheme, onSaved = () => {}) {
   update({});
 
   const labelOwn = h('input', { type: 'checkbox', checked: !!t.labelOwn });
+  const clientPanel = h('input', { type: 'checkbox', checked: t.clientPanel !== false });
+  clientPanel.addEventListener('change', () => update({ clientPanel: clientPanel.checked }));
+  const widths = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Conversation width' });
+  const drawWidths = () => widths.replaceChildren(...[['narrow', 'Narrow'], ['comfortable', 'Comfortable'], ['full', 'Full width']].map(([v, label]) =>
+    h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convWidth ?? 'comfortable') === v), class: (t.convWidth ?? 'comfortable') === v ? 'on' : '', onclick: () => { update({ convWidth: v }); drawWidths(); } }, label)));
+  drawWidths();
   const ownName = h('div', { class: 'sender' }, 'You');
   const syncOwnName = () => { ownName.hidden = !t.labelOwn; };
   labelOwn.addEventListener('change', () => { t = { ...t, labelOwn: labelOwn.checked }; syncOwnName(); });
@@ -180,6 +191,8 @@ export function themePicker(currentTheme, onSaved = () => {}) {
       h('div', { class: 'color-row' },
         h('label', { class: 'color-field' }, accent, h('span', {}, h('strong', {}, 'Accent'), h('span', { class: 'hint' }, 'Buttons, links, your messages'))),
         h('label', { class: 'color-field' }, highlight, h('span', {}, h('strong', {}, 'Highlight'), h('span', { class: 'hint' }, 'Unread counts, flags')))),
+      h('div', { class: 'field-label' }, 'Conversation width on big screens'), widths,
+      h('label', { class: 'check' }, clientPanel, h('span', {}, 'Show client details beside conversations', h('span', { class: 'hint' }, ' — on wide screens: phone, birthday, client ID, notes and lists'))),
       h('div', { class: 'field-label' }, 'Preview'), preview,
       h('label', { class: 'check' }, labelOwn, h('span', {}, 'Show my name on messages I send', h('span', { class: 'hint' }, ' — messages from other staff always show who sent them, in a slightly different shade'))),
       h('div', { class: 'field-label' }, 'App icon'), designer,
