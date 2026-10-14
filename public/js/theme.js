@@ -15,7 +15,7 @@ export const PRESETS = [
   { id: 'slate', name: 'Slate', accent: '#475569', highlight: '#0ea5e9' },
   { id: 'rose', name: 'Rose', accent: '#d6336c', highlight: '#7048e8' },
 ];
-export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO, convWidth: 'comfortable', clientPanel: true };
+export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO, convWidth: 'comfortable', clientPanel: true, convStyle: 'tint' };
 
 // Widest a conversation's messages and composer get before they're centered
 const CONV_WIDTHS = { narrow: '520px', comfortable: '620px', full: '100000px' };
@@ -46,6 +46,8 @@ export function applyTheme(theme) {
   else root.dataset.mode = t.mode;
   root.style.setProperty('--conv-max', CONV_WIDTHS[t.convWidth] ?? CONV_WIDTHS.comfortable);
   root.classList.toggle('no-client-panel', t.clientPanel === false);
+  for (const w of ['narrow', 'comfortable', 'full']) root.classList.toggle(`conv-${w}`, (t.convWidth ?? 'comfortable') === w);
+  for (const st of ['tint', 'card']) root.classList.toggle(`conv-${st}`, t.convStyle === st);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.accent);
   applyLogo(t.logo, t.iconId);
   store('tb.theme', JSON.stringify(t));
@@ -167,6 +169,10 @@ export function themePicker(currentTheme, onSaved = () => {}) {
   const drawWidths = () => widths.replaceChildren(...[['narrow', 'Narrow'], ['comfortable', 'Comfortable'], ['full', 'Full width']].map(([v, label]) =>
     h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convWidth ?? 'comfortable') === v), class: (t.convWidth ?? 'comfortable') === v ? 'on' : '', onclick: () => { update({ convWidth: v }); drawWidths(); } }, label)));
   drawWidths();
+  const styles = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Conversation background' });
+  const drawStyles = () => styles.replaceChildren(...[['plain', 'Plain'], ['tint', 'Shaded column'], ['card', 'Card']].map(([v, label]) =>
+    h('button', { type: 'button', role: 'radio', 'aria-checked': String((t.convStyle ?? 'tint') === v), class: (t.convStyle ?? 'tint') === v ? 'on' : '', onclick: () => { update({ convStyle: v }); drawStyles(); } }, label)));
+  drawStyles();
   const ownName = h('div', { class: 'sender' }, 'You');
   const syncOwnName = () => { ownName.hidden = !t.labelOwn; };
   labelOwn.addEventListener('change', () => { t = { ...t, labelOwn: labelOwn.checked }; syncOwnName(); });
@@ -192,6 +198,8 @@ export function themePicker(currentTheme, onSaved = () => {}) {
         h('label', { class: 'color-field' }, accent, h('span', {}, h('strong', {}, 'Accent'), h('span', { class: 'hint' }, 'Buttons, links, your messages'))),
         h('label', { class: 'color-field' }, highlight, h('span', {}, h('strong', {}, 'Highlight'), h('span', { class: 'hint' }, 'Unread counts, flags')))),
       h('div', { class: 'field-label' }, 'Conversation width on big screens'), widths,
+      h('div', { class: 'field-label' }, 'Conversation background'), styles,
+      h('p', { class: 'hint' }, 'How the conversation stands out from the empty space beside it. Only shows when there is empty space.'),
       h('label', { class: 'check' }, clientPanel, h('span', {}, 'Show client details beside conversations', h('span', { class: 'hint' }, ' — on wide screens: phone, birthday, client ID, notes and lists'))),
       h('div', { class: 'field-label' }, 'Preview'), preview,
       h('label', { class: 'check' }, labelOwn, h('span', {}, 'Show my name on messages I send', h('span', { class: 'hint' }, ' — messages from other staff always show who sent them, in a slightly different shade'))),

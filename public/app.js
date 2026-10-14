@@ -1008,7 +1008,7 @@ function createPane(id) {
     'aria-label': 'Conversation',
     onmousedown: () => focusPane(id),
     onfocusin: () => focusPane(id),
-  }, p.head, h('div', { class: 'pane-body' }, h('div', { class: 'pane-main' }, p.list, p.banner, p.composer), p.side));
+  }, p.head, h('div', { class: 'pane-body' }, h('div', { class: 'pane-main' }, h('div', { class: 'conv-backdrop', 'aria-hidden': 'true' }), p.list, p.banner, p.composer), p.side));
 
   (async () => {
     try {

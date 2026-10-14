@@ -812,3 +812,31 @@ dialog.wide.xl { width: min(920px, calc(100vw - 32px)); }
 .cp-notes-text { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; max-height: 220px; overflow-y: auto; }
 .cp-phone { font-weight: 600; font-size: 13.5px; }
 .cp-actions .btn { padding: 5px 12px; font-size: 13px; text-decoration: none; }
+
+/* Conversation background (Appearance): a shaded column or a card behind the
+   messages, with the empty space beside it dimmed. Drawn by .conv-backdrop
+   only when the pane is wide enough to leave real space at the sides. */
+:root { --conv-gutter: var(--bg-page); --conv-col: var(--bg); --conv-pad: 24px; }
+@media (prefers-color-scheme: dark) { :root:not([data-mode="light"]) { --conv-col: var(--bg-side); } }
+:root[data-mode="dark"] { --conv-col: var(--bg-side); }
+.pane-main { position: relative; container: convmain / inline-size; }
+.pane-main > :not(.conv-backdrop) { position: relative; z-index: 1; }
+.conv-backdrop { display: none; position: absolute; inset: 0; background: var(--conv-gutter); pointer-events: none; }
+.conv-backdrop::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: calc(var(--conv-max, 620px) + 2 * var(--conv-pad)); background: var(--conv-col);
+}
+@container convmain (min-width: 616px) {
+  :root.conv-narrow:is(.conv-tint, .conv-card) .conv-backdrop { display: block; }
+  :root.conv-narrow:is(.conv-tint, .conv-card) .pane-main .composer { border-top-color: transparent; }
+  :root.conv-narrow.conv-card .conv-backdrop::before { top: 12px; bottom: 12px; border: 1px solid var(--border); border-radius: 14px; }
+  :root.conv-narrow.conv-card .pane-main .messages { margin-top: 12px; }
+  :root.conv-narrow.conv-card .pane-main .composer { margin-bottom: 12px; }
+}
+@container convmain (min-width: 716px) {
+  :root.conv-comfortable:is(.conv-tint, .conv-card) .conv-backdrop { display: block; }
+  :root.conv-comfortable:is(.conv-tint, .conv-card) .pane-main .composer { border-top-color: transparent; }
+  :root.conv-comfortable.conv-card .conv-backdrop::before { top: 12px; bottom: 12px; border: 1px solid var(--border); border-radius: 14px; }
+  :root.conv-comfortable.conv-card .pane-main .messages { margin-top: 12px; }
+  :root.conv-comfortable.conv-card .pane-main .composer { margin-bottom: 12px; }
+}

@@ -500,6 +500,8 @@ api.put('/me/theme', (req, res) => {
     // How wide a conversation's messages can get, and the client details panel beside them
     convWidth: ['narrow', 'comfortable', 'full'].includes(t.convWidth) ? t.convWidth : current.convWidth ?? 'comfortable',
     clientPanel: typeof t.clientPanel === 'boolean' ? t.clientPanel : current.clientPanel ?? true,
+    // How the column stands out from the empty space beside it
+    convStyle: ['plain', 'tint', 'card'].includes(t.convStyle) ? t.convStyle : current.convStyle ?? 'tint',
   };
   db.prepare('UPDATE users SET theme = ? WHERE id = ?').run(JSON.stringify(theme), req.user.id);
   res.json(theme);
