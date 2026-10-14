@@ -18,7 +18,7 @@ export const PRESETS = [
 export const DEFAULT_THEME = { preset: 'textboss', accent: '#12b4d6', highlight: '#ff4b2b', mode: 'auto', logo: DEFAULT_LOGO, convWidth: 'comfortable', clientPanel: true };
 
 // Widest a conversation's messages and composer get before they're centered
-const CONV_WIDTHS = { narrow: '620px', comfortable: '760px', full: '100000px' };
+const CONV_WIDTHS = { narrow: '520px', comfortable: '620px', full: '100000px' };
 
 let current = DEFAULT_THEME;
 export const currentLogo = () => normalizeLogo(current.logo);

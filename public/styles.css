@@ -781,9 +781,9 @@ dialog.wide.xl { width: min(920px, calc(100vw - 32px)); }
 .pane { container-type: inline-size; }
 .pane-body { flex: 1; min-height: 0; display: flex; }
 .pane-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.pane .messages { padding-inline: max(16px, calc((100% - var(--conv-max, 760px)) / 2)); }
-.pane .composer { padding-inline: max(12px, calc((100% - var(--conv-max, 760px)) / 2)); }
-.pane .optout-banner { margin-inline: max(12px, calc((100% - var(--conv-max, 760px)) / 2)); }
+.pane .messages { padding-inline: max(16px, calc((100% - var(--conv-max, 620px)) / 2)); }
+.pane .composer { padding-inline: max(12px, calc((100% - var(--conv-max, 620px)) / 2)); }
+.pane .optout-banner { margin-inline: max(12px, calc((100% - var(--conv-max, 620px)) / 2)); }
 
 .client-panel { display: none; width: 300px; flex: none; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg-side); padding: 14px; }
 .panel-toggle { display: none; }
