@@ -1,12 +1,14 @@
 // Everything specific to the VoIP.ms API lives in this file.
 //
-// Outgoing: POST form fields to https://voip.ms/api/v1/rest.php with
+// Outgoing: POST multipart form fields to https://voip.ms/api/v1/rest.php with
 //   api_username (the VoIP.ms login email) and api_password (the separate API
 //   password), method=sendSMS (up to 160 characters) or sendMMS (up to 2048
 //   characters, media1..media3 as URLs). Replies are JSON: { status: "success",
 //   sms|mms: "<id>" } or { status: "<error code>" }.
 //   The API must be enabled and this server's IP allowed in the VoIP.ms portal
-//   (Main Menu → SOAP and REST/JSON API).
+//   (Main Menu → SOAP and REST/JSON API). The body must be multipart/form-data
+//   (or a GET query string): a urlencoded POST gets a SOAP "Bad Request" fault.
+//   Error replies also carry a human-readable "message".
 //
 // Incoming: each DID's "SMS URL Callback" makes VoIP.ms request a URL with
 //   {TO} {FROM} {MESSAGE} {ID} {TIMESTAMP} {MEDIA} filled in, and it expects the
@@ -37,7 +39,7 @@ const ERRORS = {
   limit_reached: 'VoIP.ms says this account reached its messaging limit.',
   message_empty: 'The message is empty.',
 };
-const explain = (status) => ERRORS[status] ?? `VoIP.ms error: ${status}`;
+const explain = (json) => ERRORS[json.status] ?? `VoIP.ms error: ${json.message || json.status}`;
 
 // VoIP.ms wants 10-digit North American numbers
 const tenDigits = (phone) => {
@@ -46,10 +48,11 @@ const tenDigits = (phone) => {
 };
 
 async function call(creds, method, fields = {}) {
-  const form = new URLSearchParams({ api_username: creds.username, api_password: creds.password, method, ...fields });
+  const form = new FormData(); // multipart/form-data
+  for (const [k, v] of Object.entries({ api_username: creds.username, api_password: creds.password, method, ...fields })) form.append(k, String(v));
   const res = await fetch(API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    headers: { Accept: 'application/json' },
     body: form,
     signal: AbortSignal.timeout(20_000),
   });
@@ -58,7 +61,9 @@ async function call(creds, method, fields = {}) {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(`VoIP.ms returned ${res.status} ${res.statusText}: ${text.slice(0, 120)}`);
+    // SOAP-style faults come back as XML; show their reason text
+    const reason = /<(?:env:Text|faultstring)[^>]*>([^<]+)</.exec(text)?.[1];
+    throw new Error(`VoIP.ms returned ${res.status} ${res.statusText}${reason ? `: ${reason}` : `: ${text.slice(0, 120)}`}`);
   }
   return json;
 }
@@ -72,7 +77,7 @@ export async function testConnection(creds = providerCredentials('voipms')) {
   } catch (err) {
     return { ok: false, message: `Could not reach VoIP.ms: ${err.message}` };
   }
-  if (json.status !== 'success') return { ok: false, message: explain(json.status) };
+  if (json.status !== 'success') return { ok: false, message: explain(json) };
   return { ok: true, message: 'Connected to VoIP.ms' };
 }
 
@@ -85,7 +90,7 @@ export async function sendMessage({ from, to, body, mediaUrls = [] }) {
   const fields = { did: tenDigits(from), dst: tenDigits(to[0]), message: body };
   mediaUrls.forEach((url, i) => (fields[`media${i + 1}`] = url));
   const json = await call(providerCredentials('voipms'), mms ? 'sendMMS' : 'sendSMS', fields);
-  if (json.status !== 'success') throw new Error(explain(json.status));
+  if (json.status !== 'success') throw new Error(explain(json));
   const id = json.sms ?? json.mms;
   return { refId: id != null ? `voipms-${id}` : null, results: [{ to: normalizePhone(to[0]), ok: true, status: 'success' }] };
 }
