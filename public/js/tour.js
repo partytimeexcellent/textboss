@@ -77,7 +77,7 @@ function steps(actions) {
     {
       title: `Welcome to TextBoss, ${state.me.displayName.split(' ')[0]}`,
       body: [
-        'TextBoss is your team\'s shared inbox for texting clients from the practice\'s phone numbers.',
+        'TextBoss is your team\'s shared inbox for texting clients from your organization\'s phone numbers.',
         'This quick tour shows you around in about a minute. Use Next, or the arrow keys.',
       ],
     },
@@ -85,7 +85,7 @@ function steps(actions) {
       target: '.conv-list', before: goHome,
       title: 'Conversations',
       body: [
-        'Every text to and from the practice lands here, newest first. Unread ones are bold.',
+        'Every text to and from your organization lands here, newest first. Unread ones are bold.',
         'The whole team shares these threads, so everyone sees the same history no matter who replied.',
         isPhone() ? null : 'Hover over a conversation to pin it to the top or flag it for follow-up.',
       ],
@@ -93,7 +93,7 @@ function steps(actions) {
     {
       target: '.side-head select', when: () => state.numbers.length > 1, before: goHome,
       title: 'Your numbers',
-      body: ['Switch between the practice\'s phone numbers, or see them all at once. New messages go out from the number you pick.'],
+      body: ['Switch between your organization\'s phone numbers, or see them all at once. New messages go out from the number you pick.'],
     },
     {
       target: '.side-head input[type=search]', before: goHome,
@@ -124,8 +124,8 @@ function steps(actions) {
       target: '.pane .messages', when: () => hasConv, before: openFirstConversation, place: 'over',
       title: 'Who said what',
       body: [
-        'Clients are on the left and the practice is on the right.',
-        'Every text from the practice shows who sent it. A teammate\'s are a different shade from yours, so you can see at a glance who already replied.',
+        'Clients are on the left and your team is on the right.',
+        'Every text from your team shows who sent it. A teammate\'s are a different shade from yours, so you can see at a glance who already replied.',
       ],
     },
     {
@@ -166,7 +166,7 @@ function steps(actions) {
       target: '.side-top .icon-btn[title=Menu]', before: goHome,
       title: 'The menu',
       body: [
-        'Security (passkeys, sign-in codes and your email), Appearance (colors and your own app icon), Refresh, and this tour again.',
+        'Security (passkeys, sign-in codes and your email), Appearance (colors and your own app icon), Refresh, Help (the full user manual) and this tour again.',
         admin ? 'Admin settings live here too: your texting provider, numbers, users, email and contact imports.' : null,
       ],
     },
@@ -221,9 +221,78 @@ async function checklistItems(actions) {
 
 let active = null;
 
-export async function startTour({ onFinish, actions }) {
+// Newer features, for people who already know the basics. Each step links to the manual.
+function tipSteps() {
+  const admin = state.me.isAdmin;
+  return [
+    {
+      title: 'Tips and newer features',
+      body: ['A quick look at features that are easy to miss. Each step has a link to the user manual if you want the details.'],
+    },
+    {
+      target: '.client-panel', when: () => !!firstConversation(), before: async () => { await openFirstConversation(); await wait(300); },
+      title: 'Client details beside the conversation',
+      body: ['On a big screen, the client\'s phone, birthday, client ID, email, lists and notes sit beside the messages, so you don\'t have to leave the conversation to check them.'],
+      fallback: 'Your window is too narrow to show it right now. Make the window wider, or open TextBoss on a bigger screen.',
+      more: 'client-panel',
+    },
+    {
+      target: '.pane .panel-toggle', when: () => !!firstConversation(), before: openFirstConversation,
+      title: 'Show or hide the panel',
+      body: ['This button hides or shows the client details. TextBoss remembers your choice on every device.'],
+      more: 'client-panel',
+    },
+    {
+      target: '.pane .thread-head', when: () => !!firstConversation(), before: openFirstConversation,
+      title: 'Numbers several people share',
+      body: [
+        'A name followed by "+1" means more than one contact shares that phone number, like a parent and their children. The header lists everyone at the number.',
+        'To choose whose name is shown, open that contact and click "Show this name for the number". It\'s also used for {first_name} in canned replies and bulk texts.',
+      ],
+      more: 'shared-numbers',
+    },
+    {
+      target: '.pane .messages', place: 'over', when: () => !!firstConversation(), before: openFirstConversation,
+      title: 'Who replied',
+      body: ['Every text from your team shows who sent it, and a teammate\'s messages are a different shade from yours.'],
+      more: 'conversations',
+    },
+    {
+      target: '.conv-list .conv', when: () => matchMedia('(min-width: 1100px)').matches && !!firstConversation(), before: goHome,
+      title: 'Several conversations at once',
+      body: ['Cmd-click (Ctrl-click on Windows) a conversation, or use its Open beside button, to keep up to three open side by side.'],
+      more: 'side-by-side',
+    },
+    {
+      target: '.bell-btn', before: goHome,
+      title: 'Pause notifications',
+      body: ['Once notifications are set up on a device, one click on the bell pauses them, and another turns them back on. Each device is separate.'],
+      more: 'notifications',
+    },
+    {
+      target: '.side-top .icon-btn[title=Menu]', before: goHome,
+      title: 'Make it yours',
+      body: [
+        '⋮ → Appearance sets how wide conversations are on big screens (Narrow, Comfortable or Full width), how the conversation stands out from the empty space beside it (Card, Shaded column or Plain), your colors and your own app icon.',
+        admin ? 'As an admin, also look at Admin settings → Office hours, for automatic replies when you\'re closed, and the Inactive contacts card under Contacts & Import.' : null,
+      ],
+      more: 'appearance',
+    },
+    {
+      title: 'The user manual',
+      body: ['Everything TextBoss does is explained, with pictures, in the user manual. Open it any time from ⋮ → Help and user manual.'],
+      link: { label: 'Open the user manual', href: '/manual/' },
+    },
+  ];
+}
+
+export function startTipsTour() {
+  return startTour({ list: tipSteps() });
+}
+
+export async function startTour({ onFinish, actions, list: given }) {
   if (active) return;
-  const list = steps(actions);
+  const list = given ?? steps(actions);
   let i = 0;
 
   const root = h('div', { class: 'tour', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tour-title' });
@@ -283,9 +352,12 @@ export async function startTour({ onFinish, actions }) {
     target?.scrollIntoView?.({ block: 'nearest' });
 
     const last = i === list.length - 1;
-    const body = step.checklist ? await checklist(step.actions)
+    let body = step.checklist ? await checklist(step.actions)
       : step.render ? step.render()
       : (Array.isArray(step.body) ? step.body : [step.body]).filter(Boolean).map((t) => h('p', {}, t));
+    if (step.target && !target && step.fallback) body = [...body, h('p', { class: 'hint' }, step.fallback)];
+    if (step.more) body = [...body, h('a', { class: 'tour-more-link', href: `/manual/#${step.more}`, target: '_blank', rel: 'noopener' }, 'Read more in the manual')];
+    if (step.link) body = [...body, h('a', { class: 'btn', href: step.link.href, target: '_blank', rel: 'noopener' }, step.link.label)];
     const counted = list.filter(applies);
     const pos = counted.indexOf(step) + 1;
     fill(card,

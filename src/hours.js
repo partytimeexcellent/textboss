@@ -1,6 +1,6 @@
 // Office hours: a weekly schedule plus dated closures (holidays). While closed,
 // incoming texts get the after-hours reply, once per conversation per closed
-// stretch. Times are wall-clock times in the practice's time zone.
+// stretch. Times are wall-clock times in the organization's time zone.
 
 import { getSetting, setSetting } from './db.js';
 

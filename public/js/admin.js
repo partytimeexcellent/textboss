@@ -3,7 +3,7 @@
 
 import {
   h, fill, icon, state, els, route, api, toast, formatPhone, numberLabel, dialog, confirmDialog,
-  paneHead, relTime, formatDob, fullName,
+  paneHead, relTime, formatDob, fullName, helpLink,
 } from './core.js';
 
 const TABS = [
@@ -36,7 +36,7 @@ export async function renderAdmin() {
   const section = route().section;
   const body = h('div', { class: 'admin-page' });
   fill(els.main,
-    paneHead('Admin settings'),
+    paneHead('Admin settings', h('div', { style: 'flex:1' }), helpLink({ bulkvs: 'admin-provider', numbers: 'admin-numbers', users: 'admin-users', email: 'admin-email', hours: 'admin-hours', contacts: 'admin-import', blocked: 'admin-blocked', backup: 'admin-backup' }[section] ?? 'admin-provider')),
     h('nav', { class: 'admin-tabs', 'aria-label': 'Admin sections' },
       TABS.map(([id, label]) => h('a', { href: `#/admin/${id}`, class: id === section ? 'on' : '', 'aria-current': id === section ? 'page' : null }, label))),
     body);
@@ -526,7 +526,7 @@ async function renderEmail() {
       .map(([v, label]) => h('option', { value: v, selected: s.security === v }, label)));
   const username = h('input', { type: 'text', value: s.username, autocomplete: 'off', spellcheck: false });
   const password = h('input', { type: 'password', autocomplete: 'new-password', placeholder: s.hasPassword ? 'Saved. Leave blank to keep.' : '' });
-  const from = h('input', { type: 'text', value: s.from, placeholder: 'TextBoss <textboss@yourpractice.com>', spellcheck: false });
+  const from = h('input', { type: 'text', value: s.from, placeholder: 'TextBoss <textboss@yourcompany.com>', spellcheck: false });
   const testTo = h('input', { type: 'email', placeholder: 'you@example.com' });
   const result = h('div', { class: 'test-result', role: 'status' });
   const showResult = (ok, message) => fill(result, h('span', { class: ok ? 'ok' : 'bad' }, ok ? '✓ ' : '✕ ', message));
@@ -680,7 +680,7 @@ function importReport(file, r, onConfirm) {
           ['Row', 'Name', 'Client ID', 'Field', 'Value', 'Problem'],
           ...r.issues.map((x) => [x.row, x.name, x.patientId, x.field, x.value, x.problem]),
         ]) }, icon('download'), 'Download as CSV')),
-      h('p', { class: 'hint' }, 'These contacts are still imported, just without the bad value (an existing good value is kept). Fix them in WebPT and the next import will fill them in. Row numbers match the spreadsheet.'),
+      h('p', { class: 'hint' }, 'These contacts are still imported, just without the bad value (an existing good value is kept). Fix them in your client software and the next import will fill them in. Row numbers match the spreadsheet.'),
       h('div', { class: 'table-wrap scroll' }, h('table', { class: 'table compact' },
         h('thead', {}, h('tr', {}, ['Row', 'Name', 'Client ID', 'Field', 'Value', 'Problem'].map((t) => h('th', {}, t)))),
         h('tbody', {}, r.issues.map((x) => h('tr', {},
@@ -720,7 +720,7 @@ async function renderContactsAdmin() {
   const fileInput = h('input', { type: 'file', accept: '.xls,.xlsx,.csv', hidden: true });
   const drop = h('div', { class: 'dropzone', tabindex: 0, role: 'button', onclick: () => fileInput.click(),
     onkeydown: (e) => (e.key === 'Enter' || e.key === ' ') && fileInput.click() },
-    h('strong', {}, 'Choose a file'), ' or drag it here', h('div', { class: 'hint' }, '.xls, .xlsx or .csv, such as the WebPT Patient Listing report'));
+    h('strong', {}, 'Choose a file'), ' or drag it here', h('div', { class: 'hint' }, '.xls, .xlsx or .csv, such as a client list exported from your scheduling software'));
 
   const handle = async (f) => {
     if (!f) return;
@@ -791,7 +791,7 @@ async function renderContactsAdmin() {
             } }, 'Revoke'))))))))
       : h('p', { class: 'empty-note' }, 'No API keys yet.'),
     h('div', { class: 'card-actions' }, h('button', { class: 'btn primary', onclick: () => dialog('Create API key',
-      h('label', {}, 'Name (what will use it)', h('input', { type: 'text', name: 'name', required: true, placeholder: 'e.g. WebPT sync script' })),
+      h('label', {}, 'Name (what will use it)', h('input', { type: 'text', name: 'name', required: true, placeholder: 'e.g. Client list sync' })),
       'Create', async (data) => {
         const { key } = await api('/admin/api-keys', { method: 'POST', body: { name: data.get('name') } });
         dialog('Copy your API key now', [

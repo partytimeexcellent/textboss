@@ -2,7 +2,7 @@
 // email (password reset and emailed sign-in codes) and signing out other devices. Also used as the required
 // setup screen when an admin turns on "require two-factor sign-in".
 
-import { h, fill, icon, api, toast, dialog, paneHead, relTime } from './core.js';
+import { h, fill, icon, api, toast, dialog, paneHead, relTime, helpLink } from './core.js';
 import { passkeysSupported, createPasskey, deviceName } from './webauthn.js';
 
 const card = (title, description, ...body) =>
@@ -196,6 +196,6 @@ export async function renderSecurity(container, { forced = false, onEnabled } = 
 // #/security page
 export function renderSecurityPage(main) {
   const body = h('div', { class: 'admin-page' });
-  fill(main, paneHead('Security'), body);
+  fill(main, paneHead('Security', h('div', { style: 'flex:1' }), helpLink('security')), body);
   renderSecurity(body);
 }

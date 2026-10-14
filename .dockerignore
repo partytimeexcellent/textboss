@@ -4,3 +4,5 @@ data
 .claude
 *.md
 import/
+demo-data
+tools

@@ -315,6 +315,7 @@ export function isBlocked(phone) {
 }
 
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'tour_done_at')) db.exec('ALTER TABLE users ADD COLUMN tour_done_at INTEGER');
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'tips_seen_at')) db.exec('ALTER TABLE users ADD COLUMN tips_seen_at INTEGER');
 
 export function serializeMessage(row) {
   return {

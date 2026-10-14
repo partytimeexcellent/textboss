@@ -383,6 +383,10 @@ export function backButton(to = '#/') {
   return h('button', { class: 'icon-btn back-btn', title: 'Back', onclick: () => (location.hash = to) }, icon('back'));
 }
 
+// A "?" that opens the matching section of the user manual in a new tab
+export const helpLink = (section, label = 'Help') =>
+  h('a', { class: 'icon-btn help-link', href: `/manual/#${section}`, target: '_blank', rel: 'noopener', title: `${label}: open the user manual` }, '?');
+
 export function paneHead(title, ...extra) {
   return h('div', { class: 'thread-head' }, backButton(route().tab === 'contacts' ? '#/contacts' : '#/'),
     h('div', { class: 'title' }, h('div', { class: 'name' }, title)), ...extra);

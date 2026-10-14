@@ -43,7 +43,7 @@ export function saveSmtp(body = {}) {
   const from = String(body.from ?? '').trim();
   const port = Number(body.port) || 587;
   if (!host) throw new Error('Enter the SMTP server');
-  if (!validEmail(from.match(/<([^>]+)>/)?.[1] ?? from)) throw new Error('Enter the address emails come from, like textboss@yourpractice.com');
+  if (!validEmail(from.match(/<([^>]+)>/)?.[1] ?? from)) throw new Error('Enter the address emails come from, like textboss@yourcompany.com');
   if (port < 1 || port > 65535) throw new Error('Port must be between 1 and 65535');
   setSetting('smtp.host', host);
   setSetting('smtp.port', String(port));

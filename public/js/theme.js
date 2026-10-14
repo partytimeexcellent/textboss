@@ -204,7 +204,8 @@ export function themePicker(currentTheme, onSaved = () => {}) {
       h('div', { class: 'field-label' }, 'Preview'), preview,
       h('label', { class: 'check' }, labelOwn, h('span', {}, 'Show my name on messages I send', h('span', { class: 'hint' }, ' — messages from other staff always show who sent them, in a slightly different shade'))),
       h('div', { class: 'field-label' }, 'App icon'), designer,
-      h('p', { class: 'hint' }, 'Saved to your account, so it follows you to other devices. Other users keep their own choice.'),
+      h('p', { class: 'hint' }, 'Saved to your account, so it follows you to other devices. Other users keep their own choice. ',
+        h('a', { href: '/manual/#appearance', target: '_blank', rel: 'noopener' }, 'More about Appearance')),
     ],
     'Save',
     async () => {

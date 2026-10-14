@@ -1,13 +1,13 @@
 // Canned responses: reusable messages, keyword auto-replies and the away message
 
-import { h, fill, state, els, api, loadCanned, toast, dialog, confirmDialog, paneHead, uploadFile, ATTACH_ACCEPT } from './core.js';
+import { h, fill, state, els, api, loadCanned, toast, dialog, confirmDialog, paneHead, uploadFile, ATTACH_ACCEPT, helpLink } from './core.js';
 
 export async function renderCanned() {
   await loadCanned();
   const away = state.canned.find((c) => c.isAway);
 
   fill(els.main, 
-    paneHead('Canned responses', h('button', { class: 'btn primary', onclick: () => editCanned(null) }, 'Add canned response')),
+    paneHead('Canned responses', h('div', { style: 'flex:1' }), helpLink('canned'), h('button', { class: 'btn primary', onclick: () => editCanned(null) }, 'Add canned response')),
     h('div', { class: 'admin' },
       h('section', {},
         h('p', { class: 'hint' }, 'Insert these from the ', h('strong', {}, 'canned responses'), ' button next to the message box. A keyword makes TextBoss reply automatically when someone texts exactly that word. The away message, when one is on, auto-replies to other incoming texts (once per conversation every 12 hours). Use it for unplanned closures; regular closed hours and holidays are set by an admin under Admin settings → Office hours. While an away message is on, it is sent instead of the after-hours reply.'),

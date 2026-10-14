@@ -10,7 +10,7 @@ import { renderCanned } from './js/canned.js';
 import { renderAdmin } from './js/admin.js';
 import { applyTheme, themePicker, currentLogo } from './js/theme.js';
 import { logoSvg } from './js/logo.js';
-import { startTour } from './js/tour.js';
+import { startTour, startTipsTour } from './js/tour.js';
 import { initPush, notificationsDialog, updateBadge, bellButton, refreshBell } from './js/notify.js';
 import { renderSecurity, renderSecurityPage } from './js/security.js';
 import { passkeysSupported, getPasskey } from './js/webauthn.js';
@@ -34,6 +34,7 @@ async function boot() {
     state.theme = applyTheme(me.theme);
     state.security = me.security;
     state.tourDone = me.tourDone;
+    state.tipsSeen = me.tipsSeen;
     initPush();
   } catch {
     state.me = null;
@@ -314,6 +315,12 @@ function renderSetupRequired() {
 
 // ---------- Welcome tour ----------
 
+function runTips() {
+  state.tipsSeen = true;
+  api('/me/tips', { method: 'POST' }).catch(() => {});
+  startTipsTour();
+}
+
 function runTour() {
   startTour({
     onFinish: () => {
@@ -385,6 +392,8 @@ function renderShell() {
     renderRoute();
     // First sign-in: show the welcome tour once the list is drawn
     if (!state.tourDone) setTimeout(runTour, 400);
+    // Existing staff see what's new, once
+    else if (!state.tipsSeen) setTimeout(runTips, 600);
   });
   renderRoute();
 }
@@ -437,7 +446,9 @@ function openUserMenu(anchor) {
     })],
     ['Security', () => (location.hash = '#/security')],
     state.me.isAdmin && ['Admin settings', () => (location.hash = '#/admin')],
+    ['Help and user manual', () => window.open('/manual/', '_blank', 'noopener')],
     ['Take the tour', runTour],
+    ['Tips and newer features', runTips],
     ['Refresh', () => location.reload()],
     ['Notifications', async () => (await notificationsDialog()).addEventListener('close', refreshBell)],
     ['Change password', changePasswordDialog],

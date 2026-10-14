@@ -3,7 +3,7 @@ import { db, tx, getSetting, allUserIds } from './db.js';
 import { publish } from './events.js';
 import { normalizePhone, isValidPhone } from './phone.js';
 
-// Inactive contacts: clients who left the practice (missing from a full import)
+// Inactive contacts: clients who have left (missing from a full import)
 // or haven't been in touch for a while. Hidden from the contact list and
 // searches, kept for conversation names, and reactivated by any new text.
 for (const [col, def] of [['inactive_at', 'INTEGER'], ['inactive_reason', 'TEXT'], ['last_import_at', 'INTEGER'], ['active_since', 'INTEGER']]) {

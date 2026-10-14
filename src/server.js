@@ -177,6 +177,8 @@ app.get('/manifest.webmanifest', (req, res) => {
   res.type('application/manifest+json').send(JSON.stringify(base));
 });
 app.use('/icons', express.static(iconDir, { fallthrough: false, maxAge: '365d', immutable: true }));
+// The user manual is for signed-in staff only
+app.use('/manual', (req, res, next) => (req.user ? next() : res.redirect('/')));
 app.use(express.static(path.join(root, 'public'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 
 const api = express.Router();
@@ -465,6 +467,7 @@ api.get('/me', (req, res) => {
     provider: activeProvider(),
     security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled, remind: showMfaBanner(req.user.id) },
     tourDone: !!db.prepare('SELECT tour_done_at FROM users WHERE id = ?').get(req.user.id).tour_done_at,
+    tipsSeen: !!db.prepare('SELECT tips_seen_at FROM users WHERE id = ?').get(req.user.id).tips_seen_at,
     theme: JSON.parse(db.prepare('SELECT theme FROM users WHERE id = ?').get(req.user.id).theme ?? 'null'),
   });
 });
@@ -489,8 +492,15 @@ if (!getSetting('migrated.appearance-defaults-2')) {
 }
 
 // The welcome tour is shown until someone finishes or closes it once
+// Finishing the welcome tour also counts as seeing the tips (it covers the same ground)
 api.post('/me/tour', (req, res) => {
-  db.prepare('UPDATE users SET tour_done_at = ? WHERE id = ?').run(Date.now(), req.user.id);
+  db.prepare('UPDATE users SET tour_done_at = ?, tips_seen_at = COALESCE(tips_seen_at, ?) WHERE id = ?').run(Date.now(), Date.now(), req.user.id);
+  res.json({ ok: true });
+});
+
+// The tips tour is shown once to people who already did the welcome tour
+api.post('/me/tips', (req, res) => {
+  db.prepare('UPDATE users SET tips_seen_at = ? WHERE id = ?').run(Date.now(), req.user.id);
   res.json({ ok: true });
 });
 

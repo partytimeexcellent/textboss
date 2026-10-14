@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TextBoss user manual</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <a class="brand" href="#top"><img src="/icon-192.png" alt="">TextBoss</a>
+    <div>User manual</div>
+    <a class="back" href="/">← Back to TextBoss</a>
+
+    <h3>Using TextBoss</h3>
+    <ol>
+      <li><a href="#getting-started">Getting started</a></li>
+      <li><a href="#install">Install it as an app</a></li>
+      <li><a href="#inbox">The inbox</a></li>
+      <li><a href="#conversations">Conversations</a></li>
+      <li><a href="#writing">Writing messages</a></li>
+      <li><a href="#new-message">New messages and group texts</a></li>
+      <li><a href="#client-panel">Client details panel</a></li>
+      <li><a href="#shared-numbers">Shared phone numbers</a></li>
+      <li><a href="#side-by-side">Side-by-side conversations</a></li>
+      <li><a href="#contacts">Contacts</a></li>
+      <li><a href="#bulk">Lists and bulk messages</a></li>
+      <li><a href="#canned">Canned responses and auto-replies</a></li>
+      <li><a href="#notifications">Notifications</a></li>
+      <li><a href="#appearance">Appearance</a></li>
+      <li><a href="#security">Security and signing in</a></li>
+      <li><a href="#phone">On your phone</a></li>
+    </ol>
+    <h3>Running TextBoss (admins)</h3>
+    <ol>
+      <li><a href="#admin-provider">Texting provider</a></li>
+      <li><a href="#admin-numbers">Numbers</a></li>
+      <li><a href="#admin-users">Users and sign-in security</a></li>
+      <li><a href="#admin-email">Email</a></li>
+      <li><a href="#admin-hours">Office hours</a></li>
+      <li><a href="#admin-import">Contacts and imports</a></li>
+      <li><a href="#admin-inactive">Inactive contacts</a></li>
+      <li><a href="#admin-blocked">Blocked numbers</a></li>
+      <li><a href="#admin-backup">Backup and restore</a></li>
+    </ol>
+    <h3>Reference</h3>
+    <ol>
+      <li><a href="#merge-fields">Merge fields</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <main id="top">
+    <header class="hero">
+      <h1>TextBoss user manual</h1>
+      <p>TextBoss is your team's shared inbox for texting clients from your organization's phone numbers. Everyone on the team sees the same conversations, so anyone can pick up where a colleague left off.</p>
+      <p>The examples use a made-up company, <strong>The Business Factory</strong>, with made-up staff and clients. Every name and phone number is fictional.</p>
+    </header>
+
+    <div class="part"><h2>Using TextBoss</h2><p>For everyone on the team.</p></div>
+
+    <h2 id="getting-started"><span class="num">1</span>Getting started</h2>
+    <p>Open the TextBoss address your administrator gave you and sign in with your username and password.</p>
+    <figure class="small"><img src="img/sign-in.jpg" alt="The sign-in screen" width="360" height="466" loading="lazy"><figcaption>The sign-in screen. "Sign in with a passkey" appears once you've added one; "Forgot password?" appears when email is set up.</figcaption></figure>
+    <ul>
+      <li><strong>Two-factor sign-in.</strong> If you've set up a passkey or authenticator app, you'll be asked for it after your password. Don't have it with you? Choose <em>Email me a code instead</em>. See <a href="#security">Security</a>.</li>
+      <li><strong>Forgot your password?</strong> Choose <em>Forgot password?</em>, enter your username or email, and type the 6-digit code from the email along with a new password.</li>
+      <li><strong>Welcome tour.</strong> The first time you sign in, a short tour points out the main parts of TextBoss and ends with a checklist of things to set up. Replay it any time from <strong>⋮ → Take the tour</strong>.</li>
+    </ul>
+    <figure><img src="img/tour.jpg" alt="The welcome tour's first step over the inbox" width="1440" height="900" loading="lazy"><figcaption>The welcome tour highlights the real buttons as it goes.</figcaption></figure>
+    <p>Until you add a passkey or authenticator app, a reminder appears at the top of the sidebar. <em>Set up</em> takes you to Security; <em>Remind me tomorrow</em> hides it for a day on all your devices.</p>
+    <figure class="small"><img src="img/reminder-banner.jpg" alt="The reminder to set up two-factor sign-in" width="340" height="330" loading="lazy"></figure>
+
+    <h2 id="install"><span class="num">2</span>Install it as an app</h2>
+    <p>Installed, TextBoss opens in its own window with its own icon, no browser bar, and an unread count on the icon. <strong>On iPhone and iPad, installing is required for notifications.</strong></p>
+    <table>
+      <tr><th>Device</th><th>How</th></tr>
+      <tr><td>iPhone, iPad</td><td>Open TextBoss in Safari, tap the Share button, then <em>Add to Home Screen</em>. Open it from the new icon and sign in.</td></tr>
+      <tr><td>Android</td><td>Open TextBoss in Chrome, tap ⋮, then <em>Add to Home screen</em> or <em>Install app</em>.</td></tr>
+      <tr><td>Mac</td><td>In Safari choose <em>File → Add to Dock</em>. In Chrome or Edge, click the install icon at the right of the address bar.</td></tr>
+      <tr><td>Windows</td><td>In Edge or Chrome, click the install icon at the right of the address bar (or ⋯ → Apps → <em>Install this site as an app</em>).</td></tr>
+    </table>
+    <p class="tip"><strong>Tip:</strong> the installed app has no reload button. If something looks out of date, use <strong>⋮ → Refresh</strong>. When a new version of TextBoss is installed, a bar offers to reload.</p>
+
+    <h2 id="inbox"><span class="num">3</span>The inbox</h2>
+    <figure><img src="img/overview.jpg" alt="TextBoss on a large screen: the conversation list, a conversation and the client details panel" width="1440" height="900" loading="lazy"><figcaption>The whole window: conversations on the left, the open conversation in the middle, the client's details on the right.</figcaption></figure>
+    <p>Every text to and from your organization's numbers lands in the conversation list, newest first.</p>
+    <figure class="small"><img src="img/inbox.jpg" alt="The conversation list" width="340" height="620" loading="lazy"></figure>
+    <dl>
+      <dt>Shared by the whole team</dt><dd>A conversation belongs to the phone number, not to a person. Everyone who can use that number sees the same history and replies in the same thread.</dd>
+      <dt>Unread</dt><dd>Bold names and a red count. The Messages tab shows the total.</dd>
+      <dt>Numbers</dt><dd>With more than one number, choose one at the top or <em>All numbers</em>. Each row shows which number it's on ("via Front desk").</dd>
+      <dt>Search</dt><dd>Finds conversations by message text, a client's name, phone number or client ID.</dd>
+      <dt>Filters</dt><dd><em>Unread</em>, <em>Flagged</em> and <em>Archived</em>. Archived conversations come back to the inbox by themselves when the client texts again.</dd>
+      <dt>Pin and flag</dt><dd>Hover a row to pin it to the top or flag it for follow-up. Pins and flags are shared with the team.</dd>
+      <dt>Who's who</dt><dd>Contacts show by name; numbers that aren't contacts show as a phone number. <em>"+1"</em> after a name means several contacts share that number; see <a href="#shared-numbers">Shared phone numbers</a>.</dd>
+    </dl>
+
+    <h2 id="conversations"><span class="num">4</span>Conversations</h2>
+    <figure><img src="img/conversation.jpg" alt="An open conversation" width="1100" height="900" loading="lazy"></figure>
+    <ul>
+      <li><strong>Who said what.</strong> Clients are on the left and your team on the right. Every text from your team shows who sent it, and a teammate's messages are a different shade from yours.</li>
+      <li><strong>Delivery.</strong> Your latest message shows <em>Sending…</em>, <em>Sent</em>, <em>Delivered</em> or <em>Failed</em> with the reason. Some providers and carriers only report "Sent".</li>
+      <li><strong>Auto-replies and bulk texts</strong> are labeled, so you know a person didn't type them.</li>
+      <li><strong>Pictures and files</strong> show in the thread, each with a <em>Download</em> link.</li>
+    </ul>
+    <figure class="medium"><img src="img/picture-message.jpg" alt="A picture message with its Download link" width="292" height="238" loading="lazy"></figure>
+    <h3>The conversation menu</h3>
+    <p>The ⋮ button in the conversation header has everything else:</p>
+    <figure><img src="img/conversation-menu.jpg" alt="The conversation menu" width="1108" height="330" loading="lazy"></figure>
+    <ul>
+      <li><strong>Pin to top</strong> and <strong>Flag as important</strong>.</li>
+      <li><strong>Mark unread</strong>, to come back to it later.</li>
+      <li><strong>Archive</strong> to tidy the list. It returns when the client texts again.</li>
+      <li><strong>Mark opted out</strong> or <strong>Opt back in</strong>. See <a href="#contacts">Opt-out</a>.</li>
+      <li><strong>Block sender</strong> and <strong>Delete history</strong> are for admins only.</li>
+    </ul>
+
+    <h2 id="writing"><span class="num">5</span>Writing messages</h2>
+    <p>Type in the message box at the bottom. On a computer, <kbd>Enter</kbd> sends and <kbd>Shift</kbd>+<kbd>Enter</kbd> starts a new line; on a phone, tap the send button. The buttons beside the box:</p>
+    <figure><img src="img/canned-picker.jpg" alt="The canned responses picker above the message box" width="820" height="476" loading="lazy"><figcaption>Canned responses: search, then click one to insert it. Merge fields like {first_name} are filled in for you.</figcaption></figure>
+    <dl>
+      <dt>📎 Attach</dt><dd>Pictures, PDFs and other files (sent as a picture message).</dd>
+      <dt>☺ Emoji</dt><dd>A quick picker. Note that emoji make a text use 70 characters per part instead of 160.</dd>
+      <dt>Canned responses</dt><dd>Saved replies your team uses often. See <a href="#canned">Canned responses</a>.</dd>
+    </dl>
+    <p class="note"><strong>Opted-out clients.</strong> If the client replied STOP or was marked as opted out, TextBoss warns you before sending, and you must type <code>SEND</code> to confirm. Only do this when the law allows, for example a reply they asked for.</p>
+
+    <h2 id="new-message"><span class="num">6</span>New messages and group texts</h2>
+    <p>Click <strong>New</strong> at the top of the sidebar (or press <kbd>N</kbd> on a computer). Search for contacts or type phone numbers, pick the number to send from, and write your message.</p>
+    <figure><img src="img/new-message.jpg" alt="Starting a new message" width="1100" height="900" loading="lazy"></figure>
+    <ul>
+      <li>Adding several people starts a <strong>group text</strong> (up to 10), where everyone sees each other's replies. To text several people individually, use a <a href="#bulk">bulk message</a> instead.</li>
+      <li>If you text someone you already have a conversation with, TextBoss continues that conversation.</li>
+    </ul>
+    <p class="tip"><strong>VoIP.ms:</strong> if your organization uses VoIP.ms for texting, group texts aren't available, because VoIP.ms can't send them. TextBoss will say so.</p>
+
+    <h2 id="client-panel"><span class="num">7</span>Client details panel</h2>
+    <p>On a big screen, the client's details sit beside the conversation: phone, birthday and age, client ID, email, lists and notes, with an <em>Edit contact</em> button. Group texts and shared numbers list each person. Numbers that aren't contacts show <em>Add contact</em>.</p>
+    <figure class="small"><img src="img/client-panel.jpg" alt="The client details panel" width="300" height="837" loading="lazy"></figure>
+    <p>The panel button in the conversation header (a rectangle with a bar on the right) hides or shows it, and TextBoss remembers your choice. The panel steps aside by itself when there isn't room, such as on a laptop or with several conversations open.</p>
+
+    <h2 id="shared-numbers"><span class="num">8</span>Shared phone numbers</h2>
+    <p>Several contacts can share one phone number, like a parent who books for their children. The conversation shows one contact's name followed by <em>"+1"</em> (or +2, +3…).</p>
+    <ul>
+      <li>Hover over the name in the list, or look under the name in the conversation header, to see everyone at that number.</li>
+      <li>The person button in the header lists each contact so you can open the right one.</li>
+    </ul>
+    <figure><img src="img/shared-number-menu.jpg" alt="The contacts at a shared number" width="1108" height="182" loading="lazy"></figure>
+    <h3>Choosing whose name is shown</h3>
+    <p>By default the contact added first is shown. To pick another, open their contact page and click <strong>Show this name for the number</strong>, or click <em>Show this name</em> on their card in the client details panel. That contact is also used for merge fields like <code>{first_name}</code> and for notification names.</p>
+    <figure><img src="img/contact-page.jpg" alt="A contact page with the 'Also at this number' box" width="1440" height="900" loading="lazy"><figcaption>"Also at this number" on a contact page. Ava's name is the one shown for the shared number.</figcaption></figure>
+
+    <h2 id="side-by-side"><span class="num">9</span>Side-by-side conversations</h2>
+    <p>On a computer you can have up to three conversations open at once. <kbd>Cmd</kbd>-click (Mac) or <kbd>Ctrl</kbd>-click (Windows) a conversation, or use the <em>Open beside</em> button that appears when you hover a row. Each one has its own message box and close button.</p>
+    <figure><img src="img/side-by-side.jpg" alt="Two conversations side by side" width="1440" height="900" loading="lazy"></figure>
+
+    <h2 id="contacts"><span class="num">10</span>Contacts</h2>
+    <p>The <strong>Contacts</strong> tab lists your clients. Search by name, phone, date of birth or client ID, and filter by list, opted out, or no phone number. Click a contact to see and edit their details.</p>
+    <dl>
+      <dt>Details</dt><dd>First and last name, nickname, mobile phone, date of birth, email, client ID and notes. A nickname shows in quotes, like <em>"Mo" Maurice Bell</em>.</dd>
+      <dt>Opt-out</dt><dd>Applies to the phone number. It's set automatically when someone replies STOP (or UNSUBSCRIBE and similar) and cleared when they reply START. You can also set it by hand.</dd>
+      <dt>Inactive</dt><dd>Clients who've left can be marked inactive: they're hidden from Contacts, searches and bulk messages, but keep their conversations. Any text to or from them makes them active again. Use <em>Mark inactive</em> on a contact page; admins can also do it from imports (see <a href="#admin-inactive">Inactive contacts</a>).</dd>
+      <dt>Message</dt><dd>The <em>Message</em> button on a contact page opens their conversation.</dd>
+    </dl>
+    <p class="admin-only"><strong>Admins only:</strong> deleting contacts and blocking numbers.</p>
+
+    <h2 id="bulk"><span class="num">11</span>Lists and bulk messages</h2>
+    <p>Bulk messages send everyone their own individual text, for example a weather closure. Replies come back into each person's own conversation.</p>
+    <ol class="steps">
+      <li>In <strong>Contacts</strong>, tick the people to include, or filter to a list and use the tick box at the top to select everyone.</li>
+      <li>Click <strong>Message</strong> in the bar that appears. <em>Add to list</em> saves the selection as a named list for next time.</li>
+      <li>Pick the number to send from, write the message (merge fields like <code>{first_name}</code> work), and send.</li>
+    </ol>
+    <figure class="small"><img src="img/contacts-select.jpg" alt="Contacts with three people ticked" width="340" height="760" loading="lazy"></figure>
+    <p>Texts go out one per second in the background, so you can leave the page. Opted-out and blocked numbers are skipped automatically. The progress page shows what was sent, skipped or failed.</p>
+    <figure><img src="img/bulk-progress.jpg" alt="A finished bulk message" width="1100" height="900" loading="lazy"></figure>
+
+    <h2 id="canned"><span class="num">12</span>Canned responses and auto-replies</h2>
+    <p>Canned responses are saved replies anyone can insert from the message box. Manage them from <strong>⋮ → Canned responses</strong>.</p>
+    <figure><img src="img/canned-page.jpg" alt="The canned responses page" width="1100" height="900" loading="lazy"></figure>
+    <dl>
+      <dt>Merge fields</dt><dd><code>{first_name}</code>, <code>{last_name}</code>, <code>{full_name}</code> and <code>{nickname}</code> are filled in from the contact. See <a href="#merge-fields">Merge fields</a>.</dd>
+      <dt>Keyword</dt><dd>Give a canned response a keyword (like HOURS) and TextBoss replies with it automatically whenever someone texts exactly that word.</dd>
+      <dt>Away message</dt><dd>For unexpected closures. While one is switched on, it auto-replies to incoming texts, at most once per conversation every 12 hours. Regular closed hours and holidays are handled by <a href="#admin-hours">Office hours</a> instead.</dd>
+    </dl>
+    <p>Auto-replies never go to group texts or to opted-out clients.</p>
+
+    <h2 id="notifications"><span class="num">13</span>Notifications</h2>
+    <p>Get an alert and a badge on the app icon when a client texts, even when TextBoss is closed. Set it up once on each phone and computer: click the <strong>bell</strong> beside ⋮ (or <strong>⋮ → Notifications</strong>) and allow notifications when asked.</p>
+    <ul>
+      <li>Once set up, the bell <strong>pauses and resumes</strong> alerts on that device with one click. Paused is shown as a bell with a slash.</li>
+      <li><em>Show message text</em> can be turned off so alerts just say "New message", keeping client details off a locked screen.</li>
+      <li><em>Send a test</em> checks that alerts reach that device.</li>
+      <li>On iPhone and iPad, notifications need iOS 16.4 or later and TextBoss <a href="#install">installed on the Home Screen</a>.</li>
+    </ul>
+
+    <h2 id="appearance"><span class="num">14</span>Appearance</h2>
+    <p><strong>⋮ → Appearance</strong> changes how TextBoss looks for you. Your choices are saved to your account, so they follow you to other devices, and don't affect anyone else.</p>
+    <figure class="medium"><img src="img/appearance.jpg" alt="The Appearance settings" width="560" height="1080" loading="lazy"></figure>
+    <dl>
+      <dt>Mode and theme</dt><dd>Light, Dark or Auto (follows your device), a color preset, or your own accent and highlight colors.</dd>
+      <dt>Conversation width</dt><dd>On big screens, messages stay in a readable column: <em>Narrow</em> (the default), <em>Comfortable</em> or <em>Full width</em>.</dd>
+      <dt>Conversation background</dt><dd>How that column stands out from the empty space beside it: <em>Card</em> (the default), <em>Shaded column</em> or <em>Plain</em>.</dd>
+      <dt>Client details</dt><dd>Show or hide the <a href="#client-panel">client details panel</a>.</dd>
+      <dt>Show my name on messages I send</dt><dd>On by default. Teammates' messages always show their name.</dd>
+      <dt>App icon</dt><dd>Pick or design your own icon. To see it on your home screen or Dock, remove and re-add the installed app.</dd>
+    </dl>
+    <figure class="small"><img src="img/main-menu.jpg" alt="The main menu" width="347" height="514" loading="lazy"><figcaption>The main ⋮ menu: Canned responses, Appearance, Security, Notifications, Refresh, Help, the welcome tour and tips, and Admin settings for admins.</figcaption></figure>
+
+    <h2 id="security"><span class="num">15</span>Security and signing in</h2>
+    <p><strong>⋮ → Security</strong> is where you protect your account. Client messages are private, so please set up two-factor sign-in.</p>
+    <figure><img src="img/security.jpg" alt="The Security page" width="1440" height="900" loading="lazy"></figure>
+    <dl>
+      <dt>Passkeys and security keys</dt><dd>Sign in with Face ID, Touch ID, Windows Hello, your Android phone's screen lock, or a USB/NFC key like a YubiKey. You can also use a passkey <em>instead</em> of your password. Add one on <strong>each phone and computer</strong> you use: a passkey saved in Apple Passwords only appears on devices signed in to the same Apple Account (Google Password Manager works the same way).</dd>
+      <dt>Authenticator app</dt><dd>Six-digit codes from an app like Google Authenticator, Microsoft Authenticator, 1Password or Authy. Scan the QR code and enter the first code.</dd>
+      <dt>Email</dt><dd>Your address for <em>Forgot password?</em> and for emailed sign-in codes when you don't have your passkey or authenticator app with you.</dd>
+      <dt>Signed-in devices</dt><dd><em>Sign out everywhere else</em> signs out every other browser and device, for example a shared computer you forgot to sign out of.</dd>
+    </dl>
+    <h3>Passwords</h3>
+    <p>Passwords must be at least 10 characters, not a common or easily guessed password, not a simple pattern like <code>1234567890</code>, and not contain your username, name or email. A few unrelated words (like <code>otter lamp ninety</code>) are strong and easy to remember. Change yours from <strong>⋮ → Change password</strong>.</p>
+    <p>After too many wrong passwords or codes, sign-in for that username pauses for 15 minutes.</p>
+
+    <h2 id="phone"><span class="num">16</span>On your phone</h2>
+    <p>On a phone, the conversation list and a conversation each take the whole screen. Tap a conversation to open it and the arrow to go back. Everything else works the same.</p>
+    <figure class="phone"><img src="img/phone-inbox.jpg" alt="The inbox on a phone" width="390" height="844" loading="lazy"></figure>
+    <figure class="phone"><img src="img/phone-conversation.jpg" alt="A conversation on a phone" width="390" height="844" loading="lazy"></figure>
+
+    <div class="part"><h2>Running TextBoss</h2><p>For admins. Everything here lives under <strong>⋮ → Admin settings</strong>.</p></div>
+
+    <h2 id="admin-provider"><span class="num">17</span>Texting provider</h2>
+    <p>TextBoss sends and receives through your <strong>BulkVS</strong> or <strong>VoIP.ms</strong> account. Choose the provider, enter its API credentials and save; TextBoss tests the connection straight away.</p>
+    <figure><img src="img/admin-provider.jpg" alt="The Provider tab" width="1100" height="1332" loading="lazy"></figure>
+    <ul>
+      <li><strong>BulkVS:</strong> the REST API username and password/token from <em>API → API Credentials</em> in the BulkVS portal. Turn on delivery receipts on the BulkVS messaging webhook to get Delivered/Failed statuses.</li>
+      <li><strong>VoIP.ms:</strong> your VoIP.ms login email and the separate API password. Turn the API on and allow your server's IP address under <em>Main Menu → SOAP and REST/JSON API</em>. VoIP.ms can't send group texts or report delivery.</li>
+      <li><strong>Incoming texts:</strong> copy the address shown under <em>Incoming texts</em> into your provider's portal, following the steps on that card. Without it you can send but replies never arrive.</li>
+      <li><strong>Test an incoming text</strong> runs a fake text through TextBoss to check everything, without contacting your provider. <em>Recent webhook calls</em> shows exactly what your provider sent.</li>
+    </ul>
+
+    <h2 id="admin-numbers"><span class="num">18</span>Numbers</h2>
+    <p>Add each phone number from your provider and give it a label like "Front desk". Untick <em>Active</em> to hide a number you don't use. With only one active number, the number selector disappears for everyone.</p>
+    <figure><img src="img/admin-numbers.jpg" alt="The Numbers tab" width="1100" height="570" loading="lazy"></figure>
+
+    <h2 id="admin-users"><span class="num">19</span>Users and sign-in security</h2>
+    <p>Add staff, choose which numbers each person can use (admins see every number), and see who has two-factor sign-in.</p>
+    <figure><img src="img/admin-users.jpg" alt="The Users tab" width="1100" height="1029" loading="lazy"></figure>
+    <ul>
+      <li><strong>New users need an email address</strong>, used for password resets and sign-in codes, and a password that meets the <a href="#security">password rules</a>.</li>
+      <li><strong>Require two-factor sign-in for everyone:</strong> people without it are walked through setup the next time they use TextBoss. Set up your own first.</li>
+      <li><strong>Remind people who haven't set it up:</strong> a banner in the app and a daily email, starting a day after their account is created.</li>
+      <li><strong>Reset 2FA</strong> removes someone's passkeys and authenticator app if they've lost their phone and have no email to get a code.</li>
+      <li>Only admins can delete conversations or contacts, and block senders.</li>
+    </ul>
+
+    <h2 id="admin-email"><span class="num">20</span>Email</h2>
+    <p>Enter your organization's email (SMTP) settings so TextBoss can send password resets, sign-in codes and two-factor reminders. One-click presets fill in Google Workspace, Microsoft 365 and iCloud. Those need an <em>app password</em>, not the normal one. Use <em>Send a test</em> to check.</p>
+    <figure><img src="img/admin-email.jpg" alt="The Email tab" width="1100" height="1169" loading="lazy"></figure>
+
+    <h2 id="admin-hours"><span class="num">21</span>Office hours</h2>
+    <p>Set your weekly hours and holidays, and TextBoss replies automatically when a client texts while you're closed: once per conversation per closed stretch, so a client who texts all weekend gets one reply.</p>
+    <figure><img src="img/admin-hours.jpg" alt="The Office hours tab" width="1100" height="1964" loading="lazy"></figure>
+    <ul>
+      <li>Add a second set of hours for a lunch break. <em>Copy Monday to weekdays</em> saves typing.</li>
+      <li><em>Add US holidays</em> fills in the next 12 months; remove any you stay open for. A closure can have its own message, like "Closed for Thanksgiving, back Monday".</li>
+      <li>Keyword replies still work at any hour. A switched-on <a href="#canned">away message</a> takes priority over the schedule.</li>
+    </ul>
+
+    <h2 id="admin-import"><span class="num">22</span>Contacts and imports</h2>
+    <p>Keep TextBoss's contacts in step with your client software by importing its client list, as often as you like. Clients are matched by client ID, so re-importing the full list updates changed details (like a new phone number) instead of making duplicates. Imports never delete contacts or clear notes.</p>
+    <figure><img src="img/admin-contacts.jpg" alt="The Contacts and Import tab" width="1100" height="2147" loading="lazy"></figure>
+    <dl>
+      <dt>Upload a file</dt><dd>Drop an .xls, .xlsx or .csv export. You see exactly what would change before anything is saved.</dd>
+      <dt>Watched folder</dt><dd>Exports saved into the import folder on the server are imported automatically within a minute.</dd>
+      <dt>Import API</dt><dd>Other software can push contacts with an API key.</dd>
+    </dl>
+    <figure><img src="img/admin-import-preview.jpg" alt="An import preview" width="834" height="793" loading="lazy"><figcaption>An import preview: counts, clients in TextBoss who aren't in the file, and problems to fix.</figcaption></figure>
+    <h3>Problems to fix</h3>
+    <p>A row with a bad phone number, email or date of birth is still imported, just without the bad value, and is listed under <em>Problems to fix</em> with its spreadsheet row. The list is saved with every import: <strong>Problems to fix</strong> shows the latest one, and <em>View</em> in the import history opens any earlier one, each with a CSV download. Fix them in your client software and the next import fills them in.</p>
+    <figure><img src="img/admin-problems.jpg" alt="A saved problem list" width="920" height="432" loading="lazy"></figure>
+
+    <h2 id="admin-inactive"><span class="num">23</span>Inactive contacts</h2>
+    <p>Inactive contacts are clients who've left. They're hidden from Contacts, searches and bulk messages but keep their conversations, and any text to or from them, or appearing in a later import, makes them active again.</p>
+    <ul>
+      <li><strong>From an import:</strong> when a file is your full client list, the preview lists clients who aren't in it, with tick boxes to mark them inactive. For watched-folder imports, use <em>Review</em> in the import history, or switch on automatic marking (skipped if more than half would go at once, which looks like a partial export).</li>
+      <li><strong>After a quiet period:</strong> <em>Mark inactive after no activity for</em> 6 months to 3 years, or a custom number of days.</li>
+      <li><strong>Browse and reactivate</strong> them in the <em>Inactive contacts</em> card on the Contacts &amp; Import tab.</li>
+    </ul>
+
+    <h2 id="admin-blocked"><span class="num">24</span>Blocked numbers</h2>
+    <p>Texts from blocked numbers are dropped without notifying anyone. Unblock them here.</p>
+    <figure><img src="img/admin-blocked.jpg" alt="The Blocked tab" width="1100" height="367" loading="lazy"></figure>
+
+    <h2 id="admin-backup"><span class="num">25</span>Backup and restore</h2>
+    <p><em>Download backup</em> gives you one file with everything: messages, contacts, users, settings and attachments. Store it privately; it contains client information. <em>Restore from a backup</em> replaces everything on this server with a backup, which is also how you move TextBoss to a new server.</p>
+    <figure><img src="img/admin-backup.jpg" alt="The Backup tab" width="1100" height="968" loading="lazy"></figure>
+
+    <div class="part"><h2>Reference</h2></div>
+
+    <h2 id="merge-fields"><span class="num">26</span>Merge fields</h2>
+    <p>Merge fields are filled in from the contact when a canned response, auto-reply or bulk message is sent. For a <a href="#shared-numbers">shared number</a>, the contact whose name is shown is used.</p>
+    <table>
+      <tr><th>Field</th><th>Becomes</th><th>For "Mo" Maurice Bell</th></tr>
+      <tr><td><code>{first_name}</code></td><td>First name</td><td>Maurice</td></tr>
+      <tr><td><code>{last_name}</code></td><td>Last name</td><td>Bell</td></tr>
+      <tr><td><code>{full_name}</code></td><td>First and last name</td><td>Maurice Bell</td></tr>
+      <tr><td><code>{nickname}</code></td><td>Nickname, or the first name if there isn't one</td><td>Mo</td></tr>
+    </table>
+
+    <h2 id="troubleshooting"><span class="num">27</span>Troubleshooting</h2>
+    <dl>
+      <dt>A reply someone else sent isn't showing</dt><dd>Use <strong>⋮ → Refresh</strong>. TextBoss reconnects by itself when your phone wakes up, but this forces it.</dd>
+      <dt>I'm not getting notifications</dt><dd>Check the bell isn't paused. On iPhone, TextBoss must be installed on the Home Screen. Use <em>Send a test</em> in ⋮ → Notifications; if the device blocked notifications, it shows how to allow them.</dd>
+      <dt>My message says Failed</dt><dd>The reason is shown under the message. Common causes: the number can't receive texts, or the client opted out with their carrier.</dd>
+      <dt>I can't sign in</dt><dd>Use <em>Forgot password?</em>. After too many attempts, wait 15 minutes. If you have no email set up, ask an admin to reset your password or two-factor sign-in.</dd>
+      <dt>My passkey isn't offered on my phone</dt><dd>Passkeys belong to one Apple or Google account. Sign in with your password and choose <em>Email me a code instead</em>, then add a passkey for that phone under Security.</dd>
+      <dt>A name shows "+1"</dt><dd>Several contacts share that number. See <a href="#shared-numbers">Shared phone numbers</a>.</dd>
+    </dl>
+  </main>
+</div>
+<script src="manual.js"></script>
+</body>
+</html>
