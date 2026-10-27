@@ -874,3 +874,9 @@ dialog label.choice:has(input:checked) { border-color: var(--accent); background
 dialog label.choice input { margin-top: 3px; }
 dialog label.choice .hint { display: block; font-size: 12.5px; color: var(--text-muted); }
 dialog label.choice strong + .hint { display: inline; margin-left: 6px; }
+.choice-details { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-side); }
+.choice-details[hidden], .choice-details [hidden] { display: none; }
+.nick-box { display: grid; gap: 6px; }
+.chip.suggestion { border: 0; padding: 2px 10px; cursor: pointer; color: var(--text); }
+.chip.suggestion:hover { background: var(--accent); color: var(--accent-text); }
+.choice-details .hint { color: var(--text-muted); font-size: 13px; }

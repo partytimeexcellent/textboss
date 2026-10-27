@@ -354,7 +354,7 @@ export function matchThreads() {
       const greetings = JSON.parse(t.greetings);
       const reasons = [];
       const onPhone = byPhone.get(t.phone) ?? [];
-      const describe = (c, s) => ({ id: c.id, name: fullName(c) || '(no name)', phone: c.phone, patientId: c.patient_id, dob: c.dob,
+      const describe = (c, s) => ({ id: c.id, name: fullName(c) || '(no name)', firstName: c.first_name, lastName: c.last_name, nickname: c.nickname, phone: c.phone, patientId: c.patient_id, dob: c.dob,
         inactive: !!c.inactive_at, samePhone: c.phone === t.phone, score: Math.round((s?.score ?? 0) * 100), why: s?.why ?? [] });
       const set = (status, action, { contact = null, first = '', last = '', nick = '', candidates = [] } = {}) =>
         save.run(status, JSON.stringify(reasons), JSON.stringify(candidates), action, contact, first, last, nick, t.id);

@@ -31,7 +31,7 @@ function plan(t) {
   if (t.action === 'phone') return h('span', {}, 'Texts only, no contact');
   if (t.action === 'link') {
     return h('span', {}, 'Link to ', h('a', { href: `#/contacts/${t.contactId}` }, t.contactName || `contact #${t.contactId}`),
-      t.nickname && h('span', { class: 'muted' }, `, nickname "${t.nickname}"`));
+      t.nickname && h('span', { class: 'muted' }, `, nickname set to "${t.nickname}"`));
   }
   const name = [t.nickname && `"${t.nickname}"`, t.firstName, t.lastName].filter(Boolean).join(' ');
   return h('span', {}, 'New contact ', h('strong', {}, name));
@@ -256,7 +256,8 @@ async function openThread(id, list, reload) {
   // Choices: link to a contact on this phone, a new contact (optionally copied
   // from someone with the same name and a different phone), texts only, or skip
   const options = h('div', { class: 'choice-list' });
-  const nickname = h('input', { type: 'text', name: 'nickname', value: t.action === 'link' || t.action === 'create' ? t.nickname : t.label.nick, placeholder: 'Nickname (optional)' });
+  const known = new Map(); // contact id -> candidate, for the nickname box
+  const nickname = h('input', { type: 'text', name: 'nickname', value: t.action === 'link' || t.action === 'create' ? t.nickname : t.label.nick, placeholder: 'e.g. Bob' });
   const first = h('input', { type: 'text', name: 'firstName', value: t.firstName || t.label.first || t.greetings[0]?.name || '' });
   const last = h('input', { type: 'text', name: 'lastName', value: t.lastName || t.label.last || '' });
   let copyFrom = t.copyFrom ?? null;
@@ -270,6 +271,7 @@ async function openThread(id, list, reload) {
   const addCandidates = (cands) => {
     for (const c of cands) {
       if (options.querySelector(`[data-contact="${c.id}"]`)) continue;
+      known.set(c.id, c);
       const el = c.samePhone
         ? choice(`link:${c.id}`, ['Link to ', ...contactLabel(c)], { checked: current === `link:${c.id}` })
         : choice('create', ['New contact for this phone, copied from ', ...contactLabel(c), h('span', { class: 'hint' }, ` (has ${formatPhone(c.phone) || 'no phone'})`)], {
@@ -281,12 +283,17 @@ async function openThread(id, list, reload) {
           },
         });
       el.dataset.contact = c.id;
-      options.append(el);
+      // Search results go above "New contact", "Texts only" and "Don't import"
+      const fixed = options.querySelector('[data-fixed]');
+      if (fixed) options.insertBefore(el, fixed);
+      else options.append(el);
     }
   };
   addCandidates(t.candidates);
+  const plain = choice('create', ['New contact', h('span', { class: 'hint' }, 'Using the name below')], { checked: current === 'create', onchange: () => { copyFrom = null; copyNote.textContent = ''; } });
+  plain.dataset.fixed = '1';
   options.append(
-    choice('create', ['New contact: ', h('span', { class: 'hint' }, 'first and last name below')], { checked: current === 'create', onchange: () => { copyFrom = null; copyNote.textContent = ''; } }),
+    plain,
     choice('phone', ['Texts only, no contact', h('span', { class: 'hint' }, 'The conversation shows the phone\'s current contact, or the number')], { checked: current === 'phone' }),
     choice('skip', ['Don\'t import this conversation'], { checked: current === 'skip' }));
 
@@ -301,7 +308,7 @@ async function openThread(id, list, reload) {
       if (q.length < 2) return fill(results);
       const found = await api(`/contacts?status=all&limit=8&q=${encodeURIComponent(q)}`);
       const rows = (found.contacts ?? found).map((c) => ({
-        id: c.id, name: [c.nickname && `"${c.nickname}"`, c.firstName, c.lastName].filter(Boolean).join(' '), phone: c.phone,
+        id: c.id, name: [c.nickname && `"${c.nickname}"`, c.firstName, c.lastName].filter(Boolean).join(' '), firstName: c.firstName, lastName: c.lastName, nickname: c.nickname, phone: c.phone,
         patientId: c.patientId, dob: c.dob, inactive: !!c.inactiveAt, samePhone: c.phone === t.phone,
       }));
       fill(results, rows.length ? `${plural(rows.length, 'contact')} added to the choices above` : 'No contacts found');
@@ -309,6 +316,35 @@ async function openThread(id, list, reload) {
     }, 250);
   });
   finder.addEventListener('keydown', (e) => e.key === 'Enter' && e.preventDefault());
+
+  // Below the choices: the new contact's name, and the nickname for whichever
+  // contact this conversation ends up with (linked or new)
+  const nickLabel = h('span', {});
+  const nickNow = h('span', { class: 'hint' });
+  const suggestions = h('div', { class: 'chips-row' });
+  const names = h('div', { class: 'form-grid' }, h('label', {}, 'First name', first), h('label', {}, 'Last name', last));
+  const nickBox = h('div', { class: 'nick-box' }, h('label', {}, nickLabel, nickname), nickNow, suggestions);
+  const details = h('div', { class: 'choice-details' }, names, copyNote, nickBox);
+  const sync = () => {
+    const value = options.querySelector('input[name="choice"]:checked')?.value ?? '';
+    const [action, id] = value.split(':');
+    details.hidden = !['link', 'create'].includes(action);
+    names.hidden = action !== 'create';
+    copyNote.hidden = action !== 'create' || !copyNote.textContent;
+    const c = action === 'link' ? known.get(Number(id)) : null;
+    const firstName = c ? c.firstName : first.value;
+    nickLabel.textContent = c ? `Nickname for ${[c.firstName, c.lastName].filter(Boolean).join(' ') || c.name}` : 'Nickname';
+    nickNow.textContent = c ? (c.nickname ? `Now "${c.nickname}". Leave empty to keep it.` : 'No nickname yet. Leave empty for none.') : '';
+    const seen = new Set([String(firstName ?? '').toLowerCase(), '']);
+    const ideas = [t.label.nick, ...t.greetings.map((g) => g.name), t.label.first].filter((n) => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
+    fill(suggestions, ideas.length > 0 && h('span', { class: 'hint' }, 'From Textable:'),
+      ideas.map((n) => h('button', { type: 'button', class: 'chip suggestion', onclick: () => { nickname.value = n; sync(); } }, n)),
+      nickname.value && h('button', { type: 'button', class: 'link-btn', onclick: () => { nickname.value = ''; sync(); } }, 'Clear'));
+  };
+  options.addEventListener('change', sync);
+  nickname.addEventListener('input', () => !nickname.value && sync());
+  first.addEventListener('input', sync);
+  sync();
 
   const next = h('input', { type: 'checkbox', checked: true });
   const facts = [
@@ -328,11 +364,7 @@ async function openThread(id, list, reload) {
       : [
         h('div', { class: 'field-label' }, 'What to do'),
         options, finder, results,
-        h('div', { class: 'form-grid three' },
-          h('label', {}, 'First name (new contact)', first),
-          h('label', {}, 'Last name (new contact)', last),
-          h('label', {}, 'Nickname', nickname)),
-        copyNote,
+        details,
         h('label', { class: 'switch-label inline' }, next, h('span', {}, 'Open the next one after confirming')),
       ],
   ], done ? null : 'Confirm', async (form) => {
