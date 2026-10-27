@@ -194,7 +194,7 @@ api.get('/version', (_req, res) => {
 
 api.get('/setup', (_req, res) => {
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
-  res.json({ needed: n === 0, mockMode: isMockMode(), passkeys: mfa.passkeysAvailable(), origin: new URL(config.publicUrl).origin, email: email.emailConfigured() });
+  res.json({ needed: n === 0, mockMode: isMockMode(), passkeys: mfa.passkeysAvailable(), origin: new URL(config.publicUrl).origin, email: email.emailConfigured(), clone: config.clone });
 });
 
 api.post('/setup', (req, res) => {

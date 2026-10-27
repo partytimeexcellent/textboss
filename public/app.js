@@ -111,6 +111,10 @@ async function renderAuth() {
     },
     logo,
     h('p', {}, setup.needed ? 'Create the first admin account.' : 'Sign in to your team inbox.'),
+    // Restoring a backup replaces every account, and email is off on a practice copy
+    setup.clone && h('p', { class: 'hint' }, setup.needed
+      ? 'Practice copy: this account is only for restoring a backup of the live TextBoss. After the restore, sign in with your live username and password.'
+      : 'Practice copy: sign in with your live TextBoss username and password. Password resets by email are off here; an admin can reset a password on the server with the command in the README.'),
     fields,
     error,
     h('button', { class: 'btn primary', type: 'submit' }, setup.needed ? 'Create account' : 'Sign in'),
