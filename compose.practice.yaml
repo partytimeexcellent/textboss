@@ -1,0 +1,29 @@
+# A practice copy of TextBoss next to the live one, on the same server, for
+# work like the Textable history review. It never texts, emails or sends push
+# notifications (TEXTBOSS_CLONE=1), and has its own data and port.
+#
+#   docker compose -p textboss-practice -f compose.practice.yaml up -d --build
+#
+# Then open http://<server>:3300, create a temporary admin, and restore a
+# backup of the live TextBoss under Admin settings → Backup. Remove it with
+#   docker compose -p textboss-practice -f compose.practice.yaml down -v
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TEXTBOSS_CLONE: "1"
+      DATA_DIR: /app/data
+      # Not the live watched folder, so the two never take each other's files
+      IMPORT_DIR: /app/data/import
+      PORT: "3000"
+      PUBLIC_URL: ${PRACTICE_URL:-http://localhost:3300}
+    volumes:
+      - practice-data:/app/data
+    ports:
+      - "${PRACTICE_PORT:-3300}:3000"
+
+volumes:
+  practice-data:

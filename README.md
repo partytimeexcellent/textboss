@@ -158,13 +158,23 @@ Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `La
 
 ## Practice copy and Textable history
 
-Big clean-ups, like importing Textable history, can be worked out on a copy of the live TextBoss on your own computer, away from the clinic:
+Big clean-ups, like importing Textable history, can be worked out on a practice copy of the live TextBoss. It never texts, emails or sends push notifications (`TEXTBOSS_CLONE=1` blocks all three even if credentials are present), and every start removes provider, email and push settings, notification devices and running bulk sends from its database. A "Practice copy" banner shows on every page.
+
+**On the same server as the live TextBoss** (in the same folder, after pulling this version):
+
+```bash
+docker compose -p textboss-practice -f compose.practice.yaml up -d --build
+```
+
+This builds and starts the copy without restarting live. It has its own data volume and listens on port 3300 (set `PRACTICE_PORT` in `.env` to change it). Then:
 
 1. On the live TextBoss: **Admin settings → Backup → Download backup**.
-2. Here: `npm run clone:make -- ~/Downloads/textboss-backup-….tar.gz` builds the copy in `clone-data/`. It removes the texting provider, email and push settings, unsubscribes devices, signs everyone out and cancels running bulk sends.
-3. `npm run clone:start` and open http://localhost:3300. Sign in with your usual username and password (passkeys only work on the live address; `DATA_DIR=clone-data node src/cli.js reset-2fa <username>` gets you past two-factor sign-in). The copy runs with `TEXTBOSS_CLONE=1`, which blocks texts, email and push even if credentials are added back, and shows a "Practice copy" banner.
-4. On **Admin settings → Textable history**, upload the Textable export folder, review the matches, and import to see the result. Repeat as often as you like: `clone:make` again starts fresh from a new backup, and your review carries over if you download it first.
-5. When it's right, **Download review file** (all the files and every choice), deploy this version to the live TextBoss, take a backup there, then drop the review file on its Textable history tab and import.
+2. Open `http://<server>:3300`, create a temporary admin, and restore that backup under **Admin settings → Backup**. The copy restarts with the live data, already cleaned. Sign in with your usual username and password (passkeys only work on the live address; `docker compose -p textboss-practice -f compose.practice.yaml exec app node src/cli.js reset-2fa <username>` gets past two-factor sign-in on the copy).
+3. On **Admin settings → Textable history**, upload the Textable export folder, review the matches, and import to see the result. Restore a fresh backup any time to start over; download the review file first to keep your choices.
+4. When it's right, **Download review file**, then deploy this version to the live TextBoss (`docker compose up -d --build`), take a backup there, drop the review file on its Textable history tab, and import.
+5. Remove the copy and its data: `docker compose -p textboss-practice -f compose.practice.yaml down -v`.
+
+**On your own computer instead** (Node 22.13 or newer, inside this folder after `npm install`): `npm run clone:make -- <backup file>` builds the copy in `clone-data/`, and `npm run clone:start` runs it at http://localhost:3300.
 
 Only the Textable review moves over; anything else changed on the copy stays there. A conversation linked to a contact that changed on live since the backup (different phone, client ID or name) comes back unconfirmed for another look, and imports never duplicate texts or contacts.
 
@@ -183,6 +193,7 @@ src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
 src/backup.js            Backup download, restore staging and swap-in at startup
 src/make-clone.js        Practice copy from a backup (npm run clone:make)
+src/clone.js             Cleans a practice copy's database of anything that could reach people
 src/textable.js          Textable history: parse the export, match to contacts, review, import
 src/push.js              Web Push (VAPID keys, subscriptions, sending, badge counts)
 src/cli.js               Account recovery: list users, reset a password or 2FA, make an admin

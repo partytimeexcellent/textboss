@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { stageRestore, applyPendingRestore } from './backup.js';
+import { scrubClone } from './clone.js';
 
 const [backupFile, folder = 'clone-data'] = process.argv.slice(2);
 if (!backupFile) {
@@ -33,10 +34,8 @@ const manifest = stageRestore(fs.readFileSync(backupFile), dataDir);
 applyPendingRestore(dataDir);
 
 const db = new DatabaseSync(path.join(dataDir, 'textboss.db'));
-const removed = db.prepare(`DELETE FROM settings WHERE key LIKE 'bulkvs.%' OR key LIKE 'voipms.%' OR key LIKE 'smtp.%' OR key LIKE 'vapid.%'`).run().changes;
-const devices = db.prepare('DELETE FROM push_subscriptions').run().changes;
+const { removed, devices, broadcasts } = scrubClone(db);
 db.prepare('DELETE FROM sessions').run();
-const broadcasts = db.prepare(`UPDATE broadcasts SET status = 'cancelled' WHERE status = 'running'`).run().changes;
 db.prepare(`INSERT INTO settings (key, value) VALUES ('clone.madeAt', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`).run(String(Date.now()));
 db.close();
 

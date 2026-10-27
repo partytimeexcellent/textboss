@@ -38,6 +38,7 @@ import {
 } from './contacts.js';
 import { router as contactsRouter } from './routes/contacts.js';
 import * as textable from './textable.js';
+import { scrubClone } from './clone.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
@@ -1348,6 +1349,10 @@ app.use((err, _req, res, _next) => {
   });
 });
 
+if (config.clone) {
+  const s = scrubClone(db);
+  if (s.removed || s.devices || s.broadcasts) console.log(`Practice copy: removed ${s.removed} provider/email/push settings and ${s.devices} notification devices, cancelled ${s.broadcasts} bulk sends`);
+}
 resumeBroadcasts();
 startWatcher();
 startIdleJob();
