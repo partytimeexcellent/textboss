@@ -37,6 +37,7 @@ import {
   parseContactFile, upsertContacts, logImport, fullName as contactFullName, idleDays, idleCandidates, inactivateIdle, autoInactivateMissing, startIdleJob,
 } from './contacts.js';
 import { router as contactsRouter } from './routes/contacts.js';
+import * as textable from './textable.js';
 import { router as importApi, createApiKey } from './routes/importApi.js';
 import { startWatcher } from './watcher.js';
 import { backupStream, stageRestore } from './backup.js';
@@ -464,6 +465,7 @@ api.get('/me', (req, res) => {
     },
     numbers,
     mockMode: isMockMode(),
+    clone: config.clone,
     provider: activeProvider(),
     security: { required: mfa.mfaRequired(), enabled: mfa.mfaStatus(req.user.id).enabled, remind: showMfaBanner(req.user.id) },
     tourDone: !!db.prepare('SELECT tour_done_at FROM users WHERE id = ?').get(req.user.id).tour_done_at,
@@ -1179,6 +1181,72 @@ admin.post('/import', express.raw({ type: () => true, limit: '20mb' }), (req, re
     publish(allUserIds(), 'contacts', {});
   }
   res.json({ dryRun, columns: parsed.columns, rows: parsed.records.length, ...result });
+});
+
+// ----- Textable history import: stage files, review matches, then import -----
+
+// Batches of files as JSON text ({ files: [{ name, text }] }), sent as plain
+// text so a whole folder export isn't held to the 1 MB JSON limit
+admin.post('/textable/files', express.text({ type: () => true, limit: '50mb' }), (req, res) => {
+  let files;
+  try {
+    files = JSON.parse(req.body).files;
+  } catch {
+    fail(400, 'Could not read the upload');
+  }
+  if (!Array.isArray(files)) fail(400, 'No files');
+  res.json(textable.stageFiles(files));
+});
+
+admin.get('/textable', (_req, res) => {
+  res.json({ summary: textable.importSummary(), threads: textable.listThreads() });
+});
+
+admin.get('/textable/threads/:id/messages', (req, res) => {
+  res.json(textable.threadMessages(Number(req.params.id)));
+});
+
+admin.put('/textable/threads/:id', (req, res) => {
+  res.json(textable.decide(Number(req.params.id), req.body ?? {}));
+});
+
+admin.post('/textable/threads/:id/reset', (req, res) => {
+  res.json(textable.unconfirm(Number(req.params.id)));
+});
+
+admin.post('/textable/confirm', (req, res) => {
+  res.json({ changed: textable.confirmThreads(Array.isArray(req.body?.ids) ? req.body.ids : []) });
+});
+
+// Match again, e.g. after a new contact import
+admin.post('/textable/rematch', (_req, res) => {
+  textable.matchThreads();
+  res.json({ ok: true });
+});
+
+admin.post('/textable/import', (req, res) => {
+  const days = (v) => Math.max(0, Math.min(36500, Math.round(Number(v) || 0)));
+  res.json(textable.importConfirmed({ archiveDays: days(req.body?.archiveDays), inactiveDays: days(req.body?.inactiveDays) }));
+});
+
+// Carry a review done on a practice copy over to this TextBoss
+admin.get('/textable/review', (_req, res) => {
+  res.setHeader('Content-Disposition', `attachment; filename="textable-review-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.json(textable.exportReview());
+});
+
+admin.post('/textable/review', express.text({ type: () => true, limit: '200mb' }), (req, res) => {
+  let review;
+  try {
+    review = JSON.parse(req.body);
+  } catch {
+    fail(400, 'That isn\'t a Textable review file from TextBoss');
+  }
+  res.json(textable.loadReview(review));
+});
+
+admin.delete('/textable', (_req, res) => {
+  res.json({ removed: textable.clearStaged() });
 });
 
 admin.get('/imports', (_req, res) => {

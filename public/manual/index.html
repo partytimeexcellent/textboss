@@ -281,6 +281,14 @@
     <h3>Problems to fix</h3>
     <p>A row with a bad phone number, email or date of birth is still imported, just without the bad value, and is listed under <em>Problems to fix</em> with its spreadsheet row. The list is saved with every import: <strong>Problems to fix</strong> shows the latest one, and <em>View</em> in the import history opens any earlier one, each with a CSV download. Fix them in your client software and the next import fills them in.</p>
     <figure><img src="img/admin-problems.jpg" alt="A saved problem list" width="920" height="432" loading="lazy"></figure>
+    <h3 id="admin-textable">Importing Textable history</h3>
+    <p>Bring past conversations over from Textable on the <strong>Textable history</strong> tab. Choose the folder from Textable's conversation export (one .csv file per person). Nothing is saved yet: each conversation is matched to a contact by its phone number, and by the name typed in Textable (nicknames like Bob for Robert, short forms like Chris, small spelling differences, and the name staff used in "Hi …" texts all count).</p>
+    <dl>
+      <dt>Needs review</dt><dd>Something doesn't add up: the phone belongs to someone with another name (often a parent), the same name has a different phone, or the texts greet them by a different name. Click the row, read the texts, and pick a contact, a new contact, texts only, or skip.</dd>
+      <dt>No match</dt><dd>No contact has this phone or a similar name, usually past clients. By default a new contact is made from the Textable name, or the texts are imported with just the number.</dd>
+      <dt>Matched</dt><dd>The phone and name agree. Check the list, then <em>Confirm all</em>. Nicknames found along the way are added to the contact.</dd>
+    </dl>
+    <p>Only confirmed conversations are imported. Texts go in by date, before anything already in TextBoss, and don't show as unread or send notifications. Anyone who texted STOP in Textable is opted out. Pictures aren't part of Textable's export, so their place is marked in the text. Old conversations can go straight to Archived and new contacts for past clients can start out inactive. Importing again never duplicates texts. Take a backup first.</p>
 
     <h2 id="admin-inactive"><span class="num">23</span>Inactive contacts</h2>
     <p>Inactive contacts are clients who've left. They're hidden from Contacts, searches and bulk messages but keep their conversations, and any text to or from them, or appearing in a later import, makes them active again.</p>

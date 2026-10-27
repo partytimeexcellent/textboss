@@ -16,6 +16,7 @@
 //   "&", so both are accepted. VoIP.ms has no delivery receipts and no group
 //   texts.
 
+import { config } from './config.js';
 import { normalizePhone } from './phone.js';
 import { providerCredentials } from './provider.js';
 
@@ -82,6 +83,7 @@ export async function testConnection(creds = providerCredentials('voipms')) {
 }
 
 export async function sendMessage({ from, to, body, mediaUrls = [] }) {
+  if (config.clone) throw new Error('Practice copy: texts are never sent');
   if (to.length > 1) throw new Error('VoIP.ms can\'t send group texts. Text each person separately.');
   if (mediaUrls.length > MAX_MEDIA) throw new Error(`VoIP.ms allows up to ${MAX_MEDIA} attachments per message.`);
   const mms = mediaUrls.length > 0 || body.length > SMS_LIMIT;

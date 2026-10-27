@@ -31,6 +31,7 @@ async function boot() {
     state.me = me.user;
     state.numbers = me.numbers;
     state.mockMode = me.mockMode;
+    state.clone = me.clone;
     state.theme = applyTheme(me.theme);
     state.security = me.security;
     state.tourDone = me.tourDone;
@@ -385,7 +386,9 @@ function renderShell() {
         bellButton(),
         h('button', { class: 'icon-btn', title: 'Menu', onclick: (e) => openUserMenu(e.currentTarget) }, icon('menu'))),
       els.tabs,
-      state.mockMode && h('div', { class: 'mock-banner' }, 'Mock mode: messages are not really sent.'),
+      state.clone
+        ? h('div', { class: 'mock-banner' }, 'Practice copy: nothing is sent, and changes here don\'t reach the live TextBoss.')
+        : state.mockMode && h('div', { class: 'mock-banner' }, 'Mock mode: messages are not really sent.'),
       state.security?.remind && mfaBanner(),
       els.sideBody,
       // Reloads the app; handy in the installed app, which has no reload button
@@ -1276,7 +1279,9 @@ function renderPaneMessages(p, forceBottom = false) {
   for (const m of p.messages) {
     const day = new Date(m.createdAt).toDateString();
     if (day !== lastDay) {
-      nodes.push(h('div', { class: 'day' }, new Date(m.createdAt).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })));
+      // The year only when it isn't this year (imported history goes back years)
+      const d = new Date(m.createdAt);
+      nodes.push(h('div', { class: 'day' }, d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })));
       lastDay = day;
       prev = null;
     }
@@ -1313,10 +1318,10 @@ function renderPaneMessages(p, forceBottom = false) {
         media.some(Boolean) && h('div', { class: 'media' }, media),
         m.body && h('div', { class: 'bubble' }, linkify(m.body)),
         showInfo && h('div', { class: 'info' },
-          m.kind === 'bulk' ? 'Bulk · ' : '',
+          m.kind === 'bulk' ? 'Bulk · ' : m.kind === 'import' ? 'From Textable · ' : '',
           new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-          ' · ',
-          m.status === 'failed' ? h('span', { class: 'err' }, `Failed${m.error ? `: ${m.error}` : ''}`) : status),
+          m.kind !== 'import' && ' · ',
+          m.kind === 'import' ? '' : m.status === 'failed' ? h('span', { class: 'err' }, `Failed${m.error ? `: ${m.error}` : ''}`) : status),
       ),
     );
     prev = m;

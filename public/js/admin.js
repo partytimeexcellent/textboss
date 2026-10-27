@@ -1,10 +1,12 @@
 // Admin settings, split into tabs of separate cards:
-// Provider (BulkVS or VoIP.ms connection + webhook), Numbers, Users, Email, Contacts (import + API), Blocked, Backup
+// Provider (BulkVS or VoIP.ms connection + webhook), Numbers, Users, Email, Contacts (import + API),
+// Textable history (textable.js), Blocked, Backup
 
 import {
   h, fill, icon, state, els, route, api, toast, formatPhone, numberLabel, dialog, confirmDialog,
   paneHead, relTime, formatDob, fullName, helpLink,
 } from './core.js';
+import { renderTextableAdmin } from './textable.js';
 
 const TABS = [
   ['bulkvs', 'Provider'],
@@ -13,18 +15,19 @@ const TABS = [
   ['email', 'Email'],
   ['hours', 'Office hours'],
   ['contacts', 'Contacts & Import'],
+  ['textable', 'Textable history'],
   ['blocked', 'Blocked'],
   ['backup', 'Backup'],
 ];
 
 // A titled card: heading, one-line description, then content
-function card(title, description, ...body) {
+export function card(title, description, ...body) {
   return h('section', { class: 'card' },
     h('header', { class: 'card-head' }, h('h2', {}, title), description && h('p', {}, description)),
     h('div', { class: 'card-body' }, ...body));
 }
 
-const pill = (text, kind = '') => h('span', { class: `pill ${kind}` }, text);
+export const pill = (text, kind = '') => h('span', { class: `pill ${kind}` }, text);
 const field = (label, input, hint) => h('label', { class: 'field' }, h('span', { class: 'field-label' }, label), input, hint && h('span', { class: 'hint' }, hint));
 
 async function refreshNumbers() {
@@ -36,13 +39,13 @@ export async function renderAdmin() {
   const section = route().section;
   const body = h('div', { class: 'admin-page' });
   fill(els.main,
-    paneHead('Admin settings', h('div', { style: 'flex:1' }), helpLink({ bulkvs: 'admin-provider', numbers: 'admin-numbers', users: 'admin-users', email: 'admin-email', hours: 'admin-hours', contacts: 'admin-import', blocked: 'admin-blocked', backup: 'admin-backup' }[section] ?? 'admin-provider')),
+    paneHead('Admin settings', h('div', { style: 'flex:1' }), helpLink({ bulkvs: 'admin-provider', numbers: 'admin-numbers', users: 'admin-users', email: 'admin-email', hours: 'admin-hours', contacts: 'admin-import', textable: 'admin-textable', blocked: 'admin-blocked', backup: 'admin-backup' }[section] ?? 'admin-provider')),
     h('nav', { class: 'admin-tabs', 'aria-label': 'Admin sections' },
       TABS.map(([id, label]) => h('a', { href: `#/admin/${id}`, class: id === section ? 'on' : '', 'aria-current': id === section ? 'page' : null }, label))),
     body);
   fill(body, h('div', { class: 'hint' }, 'Loading…'));
   try {
-    const render = { bulkvs: renderProvider, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, hours: renderHours, contacts: renderContactsAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderProvider;
+    const render = { bulkvs: renderProvider, numbers: renderNumbers, users: renderUsersTab, email: renderEmail, hours: renderHours, contacts: renderContactsAdmin, textable: renderTextableAdmin, blocked: renderBlocked, backup: renderBackup }[section] ?? renderProvider;
     const content = await render();
     if (route().view !== 'admin' || route().section !== section) return; // navigated away meanwhile
     fill(body, content);
@@ -612,7 +615,7 @@ function csvDownload(filename, rows) {
   a.remove();
 }
 
-function stat(label, value, kind = '') {
+export function stat(label, value, kind = '') {
   return h('div', { class: `stat ${kind}` }, h('div', { class: 'stat-value' }, value.toLocaleString()), h('div', { class: 'stat-label' }, label));
 }
 

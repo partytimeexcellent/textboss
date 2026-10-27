@@ -14,6 +14,7 @@
 //     names as messageSend in any letter case, and every raw body is stored in
 //     the webhook_log table so the parser can be adjusted against real traffic.
 
+import { config } from './config.js';
 import { normalizePhone, toBulkvsRecipient } from './phone.js';
 import { bulkvsCredentials } from './provider.js';
 
@@ -48,6 +49,7 @@ export async function testConnection(creds = bulkvsCredentials()) {
 }
 
 export async function sendMessage({ from, to, body, mediaUrls = [] }) {
+  if (config.clone) throw new Error('Practice copy: texts are never sent');
   const creds = bulkvsCredentials();
   const { apiBase } = creds;
   const payload = {

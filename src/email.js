@@ -76,6 +76,7 @@ function transport() {
 export const validEmail = (v) => /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(v ?? '').trim());
 
 export async function sendMail({ to, subject, text }) {
+  if (config.clone) throw new Error('This is a practice copy of TextBoss, so it doesn\'t send email.');
   if (!emailConfigured()) throw new Error('Email is not set up. An admin can add it under Admin settings → Email.');
   await transport().sendMail({ from: smtpSettings().from, to, subject, text });
 }

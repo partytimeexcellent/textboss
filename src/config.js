@@ -17,6 +17,8 @@ export const config = {
     password: env.VOIPMS_PASSWORD || '',
   },
   webhookSecret: env.WEBHOOK_SECRET || '',
+  // A practice copy (npm run clone:start): nothing is texted, emailed or pushed
+  clone: env.TEXTBOSS_CLONE === '1',
   // 'auto': Secure cookies when the request came over HTTPS (directly or via a
   // proxy's X-Forwarded-Proto), plain cookies over http:// on the local network
   secureCookies: env.INSECURE_COOKIES === '1' ? false : 'auto',

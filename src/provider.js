@@ -34,4 +34,4 @@ export const providerName = () => PROVIDERS[activeProvider()];
 export const bulkvsCredentials = () => providerCredentials('bulkvs');
 
 // No credentials for the active provider: nothing is really sent, replies are simulated
-export const isMockMode = () => !providerCredentials().username;
+export const isMockMode = () => config.clone || !providerCredentials().username;

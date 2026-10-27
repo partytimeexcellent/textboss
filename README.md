@@ -156,6 +156,18 @@ Recognized headers (any case and punctuation): `First Name`, `Name (First)`, `La
 
   If Pangolin auth is on, add `/api/v1/*` as a bypass rule for software outside your network. The API key still protects it.
 
+## Practice copy and Textable history
+
+Big clean-ups, like importing Textable history, can be worked out on a copy of the live TextBoss on your own computer, away from the clinic:
+
+1. On the live TextBoss: **Admin settings → Backup → Download backup**.
+2. Here: `npm run clone:make -- ~/Downloads/textboss-backup-….tar.gz` builds the copy in `clone-data/`. It removes the texting provider, email and push settings, unsubscribes devices, signs everyone out and cancels running bulk sends.
+3. `npm run clone:start` and open http://localhost:3300. Sign in with your usual username and password (passkeys only work on the live address; `DATA_DIR=clone-data node src/cli.js reset-2fa <username>` gets you past two-factor sign-in). The copy runs with `TEXTBOSS_CLONE=1`, which blocks texts, email and push even if credentials are added back, and shows a "Practice copy" banner.
+4. On **Admin settings → Textable history**, upload the Textable export folder, review the matches, and import to see the result. Repeat as often as you like: `clone:make` again starts fresh from a new backup, and your review carries over if you download it first.
+5. When it's right, **Download review file** (all the files and every choice), deploy this version to the live TextBoss, take a backup there, then drop the review file on its Textable history tab and import.
+
+Only the Textable review moves over; anything else changed on the copy stays there. A conversation linked to a contact that changed on live since the backup (different phone, client ID or name) comes back unconfirmed for another look, and imports never duplicate texts or contacts.
+
 ## Things to verify on first real use
 
 Sending, receiving and delivery receipts are confirmed working with BulkVS. Turn on delivery receipts (DLR) on the BulkVS messaging webhook; BulkVS sends each one as a carrier-format message (`id:… stat:DELIVRD err:000 text:…`), which TextBoss applies to the matching sent text (Sent → Delivered, or Failed with the reason) instead of showing it. Every raw webhook body is stored and shown under Admin settings → Recent webhook calls. If receipts show as "not applied" there, `parseWebhook()` in [src/bulkvs.js](src/bulkvs.js) is the only place to adjust.
@@ -170,6 +182,8 @@ src/messaging.js         Inbound (STOP/START, blocking, auto-replies), outbound,
 src/contacts.js          Contact helpers and spreadsheet import (SheetJS)
 src/watcher.js           Watched import folder
 src/backup.js            Backup download, restore staging and swap-in at startup
+src/make-clone.js        Practice copy from a backup (npm run clone:make)
+src/textable.js          Textable history: parse the export, match to contacts, review, import
 src/push.js              Web Push (VAPID keys, subscriptions, sending, badge counts)
 src/cli.js               Account recovery: list users, reset a password or 2FA, make an admin
 src/mfa.js               Two-factor: authenticator codes (TOTP), passkeys (WebAuthn)
